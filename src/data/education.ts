@@ -7,21 +7,16 @@ export interface EducationEntry {
 
 export const education: EducationEntry[] = [
   {
-    period: '[PLACEHOLDER: years]',
-    title: '[PLACEHOLDER: current programme]',
+    period: '2024 to present',
+    title: 'International Bachelor of Psychology and Honours College',
     org: 'Universiteit Leiden',
-    summary: '[PLACEHOLDER: one sentence about what you studied]',
+    summary:
+      'Combines the psychology bachelor with the Honours College. Followed an academic programme in Morocco through NIMAR (5 ECTS). First-year average of 7.9, Honours College included.',
   },
   {
-    period: '[PLACEHOLDER: years]',
-    title: '[PLACEHOLDER: previous programme]',
-    org: '[PLACEHOLDER: institution]',
-    summary: '[PLACEHOLDER: one sentence about what you studied]',
-  },
-  {
-    period: '[PLACEHOLDER: years]',
-    title: '[PLACEHOLDER: earlier education]',
-    org: '[PLACEHOLDER: school]',
-    summary: '[PLACEHOLDER: one sentence about what you studied]',
+    period: '2018 to 2024',
+    title: 'Atheneum diploma',
+    org: 'Atheneum College Hageveld',
+    summary: 'Graduated with an average of 7.65 across 10 subjects.',
   },
 ];

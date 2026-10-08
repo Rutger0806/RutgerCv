@@ -4,7 +4,28 @@ export interface SkillGroup {
 }
 
 export const skillGroups: SkillGroup[] = [
-  { category: '[PLACEHOLDER: category one]', items: ['[PLACEHOLDER: skill]', '[PLACEHOLDER: skill]', '[PLACEHOLDER: skill]'] },
-  { category: '[PLACEHOLDER: category two]', items: ['[PLACEHOLDER: skill]', '[PLACEHOLDER: skill]', '[PLACEHOLDER: skill]'] },
-  { category: '[PLACEHOLDER: category three]', items: ['[PLACEHOLDER: skill]', '[PLACEHOLDER: skill]'] },
+  {
+    category: 'Research and analysis',
+    items: [
+      'Independent research and data analysis',
+      'Critical thinking and problem solving',
+      'Excel and financial modelling',
+    ],
+  },
+  {
+    category: 'Creative and strategic',
+    items: [
+      'Creative strategy and project management',
+      'Content creation and visual storytelling',
+    ],
+  },
+  {
+    category: 'People and resilience',
+    items: [
+      'Intercultural communication',
+      'Teamwork and collaboration',
+      'Adaptability and resilience',
+      'Independence and time management',
+    ],
+  },
 ];

@@ -9,9 +9,9 @@ export interface CvSection {
 
 /** Order here is the order of the ring and of the page. */
 export const sections: CvSection[] = [
-  { id: 'education', label: 'Education', icon: 'education', blurb: '[PLACEHOLDER: one line about studies]' },
-  { id: 'experience', label: 'Job Experience', icon: 'experience', blurb: '[PLACEHOLDER: one line about work]' },
-  { id: 'projects', label: 'Projects', icon: 'projects', blurb: '[PLACEHOLDER: one line about projects]' },
-  { id: 'skills', label: 'Skills', icon: 'skills', blurb: '[PLACEHOLDER: one line about skills]' },
-  { id: 'interests', label: 'Interests', icon: 'interests', blurb: '[PLACEHOLDER: one line about interests]' },
+  { id: 'education', label: 'Education', icon: 'education', blurb: 'Psychology and the Honours College in Leiden.' },
+  { id: 'experience', label: 'Job Experience', icon: 'experience', blurb: 'Kitchens, tables and newspaper routes.' },
+  { id: 'projects', label: 'Projects', icon: 'projects', blurb: 'Astrophotography, Instagram and a business case.' },
+  { id: 'skills', label: 'Skills', icon: 'skills', blurb: 'Research, numbers, creativity and resilience.' },
+  { id: 'interests', label: 'Interests', icon: 'interests', blurb: 'Music, making things, mountains and travel.' },
 ];

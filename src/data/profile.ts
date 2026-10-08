@@ -1,13 +1,9 @@
 export const profile = {
   name: 'Rutger Witjas',
-  tagline: '[PLACEHOLDER: one short line about who you are]',
+  tagline: 'Psychology student in Leiden. Always climbing.',
   closing: {
     line: 'Still climbing.',
-    signoff: '[PLACEHOLDER: a short sign-off, two sentences at most]',
+    signoff: 'There are more peaks ahead. If you want to talk psychology, travel or what to build next, get in touch.',
   },
-  links: [
-    { label: '[PLACEHOLDER: email]', href: '#closing' },
-    { label: '[PLACEHOLDER: LinkedIn]', href: '#closing' },
-    { label: '[PLACEHOLDER: GitHub]', href: '#closing' },
-  ],
+  links: [{ label: 'Email me', href: 'mailto:S4763343@umail.leidenuniv.nl' }],
 } as const;
