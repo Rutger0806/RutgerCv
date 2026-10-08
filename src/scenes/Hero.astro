@@ -1,0 +1,18 @@
+---
+import { assets } from '../config/assets';
+import { profile } from '../data/profile';
+import Range from './Range.astro';
+
+const [first, ...others] = profile.name.split(' ');
+const rest = others.join(' ');
+---
+<section class="hero" id="top" aria-labelledby="hero-title" data-hero>
+  <div class="hero__range" data-hero-range aria-hidden="true"><Range /></div>
+  <div class="hero__frame" data-hero-frame>
+    <img src={assets.hero} alt={assets.heroAlt} width="1920" height="1080" fetchpriority="high" decoding="async" />
+  </div>
+  <div class="hero__text" data-hero-text>
+    <h1 id="hero-title" translate="no">{first} <em>{rest}</em></h1>
+    <p>{profile.tagline}</p>
+  </div>
+</section>

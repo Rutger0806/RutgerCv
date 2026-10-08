@@ -1,0 +1,20 @@
+---
+import { skillGroups } from '../data/skills';
+import BackToRing from './BackToRing.astro';
+---
+<section class="sec sec--skills" id="skills" aria-labelledby="skills-title">
+  <div class="sec__head">
+    <h2 id="skills-title">Skills</h2>
+    <BackToRing />
+  </div>
+  <div class="skill-groups">
+    {skillGroups.map((g) => (
+      <div class="skill-group" data-reveal>
+        <h3>{g.category}</h3>
+        <ul>
+          {g.items.map((item) => <li>{item}</li>)}
+        </ul>
+      </div>
+    ))}
+  </div>
+</section>

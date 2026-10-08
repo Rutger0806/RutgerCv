@@ -1,0 +1,40 @@
+---
+import { projects } from '../data/projects';
+import BackToRing from './BackToRing.astro';
+---
+<section class="sec sec--projects" id="projects" aria-labelledby="projects-title">
+  <div class="sec__head">
+    <div>
+      <p class="eyebrow">Selected Work</p>
+      <h2 id="projects-title">Projects</h2>
+    </div>
+    <BackToRing />
+  </div>
+
+  <ul class="cards">
+    {projects.map((p) => (
+      <li data-reveal>
+        <button type="button" class="card" data-project={p.id} aria-haspopup="dialog">
+          <span class="card__image" style={`aspect-ratio:${p.ratio}`} aria-hidden="true"></span>
+          <span class="card__title">{p.title}</span>
+          <span class="card__desc">{p.description}</span>
+          <span class="card__more">Open Case Study</span>
+        </button>
+      </li>
+    ))}
+  </ul>
+
+  <dialog class="case" data-case aria-labelledby="case-title">
+    <div class="case__panel" data-case-panel>
+      <button type="button" class="case__close" data-case-close>Close</button>
+      <span class="case__image" data-case-image aria-hidden="true"></span>
+      <h3 id="case-title" data-case-title></h3>
+      <dl class="case__body">
+        <dt>Problem</dt><dd data-case-problem></dd>
+        <dt>Approach</dt><dd data-case-approach></dd>
+        <dt>Outcome</dt><dd data-case-outcome></dd>
+      </dl>
+    </div>
+  </dialog>
+  <script type="application/json" id="projects-data" set:html={JSON.stringify(projects)} />
+</section>

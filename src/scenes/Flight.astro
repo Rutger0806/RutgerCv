@@ -1,0 +1,35 @@
+---
+import { assets } from '../config/assets';
+import Range from './Range.astro';
+
+/** depth 1 = far and slow, 3 = near and fast */
+const clouds = [
+  { d: 1, left: 4, top: 8, w: 40, pitch: 8 },
+  { d: 1, left: 48, top: 22, w: 34, pitch: 8 },
+  { d: 1, left: 78, top: 40, w: 40, pitch: 8 },
+  { d: 2, left: 22, top: 14, w: 34, pitch: 11 },
+  { d: 2, left: 66, top: 52, w: 28, pitch: 11 },
+  { d: 2, left: 90, top: 30, w: 34, pitch: 11 },
+  { d: 3, left: 8, top: 60, w: 28, pitch: 14 },
+  { d: 3, left: 58, top: 10, w: 28, pitch: 14 },
+];
+---
+<section class="flight" data-flight aria-hidden="true">
+  <div class="flight__sky">
+    {clouds.map((c) => (
+      <div
+        class="cloud"
+        data-cloud
+        data-depth={c.d}
+        style={`left:${c.left}%;top:${c.top}%;width:${c.w}vw;height:${c.w * 0.4}vw;--pitch:${c.pitch}px`}
+      />
+    ))}
+  </div>
+  <div class="flight__range" data-flight-range><Range /></div>
+  <div class="flight__bird" data-bird>
+    {assets.birdFrames.map((src, i) => (
+      <img src={src} alt="" width="240" height="160" data-bird-frame={i} decoding="async" />
+    ))}
+    <img src={assets.birdBack} alt="" width="240" height="160" data-bird-back decoding="async" />
+  </div>
+</section>

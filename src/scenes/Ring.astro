@@ -1,0 +1,28 @@
+---
+import { assets } from '../config/assets';
+import { sections } from '../data/sections';
+---
+<section class="ring-scene" id="ring" data-ring-scene aria-label="Choose a section of my CV">
+  <div class="ring-scene__head">
+    <p class="ring-scene__title" data-ring-title aria-hidden="true">{sections[0].label}</p>
+    <p class="ring-scene__blurb" data-ring-blurb>{sections[0].blurb}</p>
+  </div>
+
+  <div class="ring" data-ring role="group" aria-label="CV sections">
+    <div class="ring__orbit" data-ring-orbit aria-hidden="true"></div>
+    {sections.map((s, i) => (
+      <button type="button" class="ring__box" data-ring-box={i} data-target={s.id} aria-label={s.label}>
+        <img src={assets.icons[s.icon]} alt="" width="64" height="64" decoding="async" />
+        <span class="ring__label">{s.label}</span>
+      </button>
+    ))}
+  </div>
+
+  <nav class="ring-list" aria-label="CV sections">
+    <ul>
+      {sections.map((s) => (
+        <li><a href={`#${s.id}`}>{s.label}</a></li>
+      ))}
+    </ul>
+  </nav>
+</section>

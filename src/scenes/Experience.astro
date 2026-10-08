@@ -1,0 +1,26 @@
+---
+import { experience } from '../data/experience';
+import BackToRing from './BackToRing.astro';
+---
+<section class="sec sec--experience" id="experience" aria-labelledby="experience-title">
+  <div class="sec__head">
+    <h2 id="experience-title">Job Experience</h2>
+    <BackToRing />
+  </div>
+  <div class="tl tl--alternate" data-tl>
+    <span class="tl__line" data-tl-line aria-hidden="true"></span>
+    <ol>
+      {experience.map((e) => (
+        <li class="tl__item" data-reveal>
+          <span class="tl__marker" aria-hidden="true"></span>
+          <div class="tl__body">
+            <p class="tl__period">{e.period}</p>
+            <h3>{e.role}</h3>
+            <p class="tl__org">{e.org}</p>
+            <p>{e.summary}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

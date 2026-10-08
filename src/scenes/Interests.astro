@@ -1,0 +1,15 @@
+---
+import { interests } from '../data/interests';
+import BackToRing from './BackToRing.astro';
+---
+<section class="sec sec--interests" id="interests" aria-labelledby="interests-title">
+  <div class="sec__head">
+    <h2 id="interests-title">Interests</h2>
+    <BackToRing />
+  </div>
+  <ul class="chips">
+    {interests.map((label, i) => (
+      <li data-reveal><span class="chip" style={`--tilt:${[-4, 3, -2, 5, -5, 2, -3][i % 7]}deg`}>{label}</span></li>
+    ))}
+  </ul>
+</section>

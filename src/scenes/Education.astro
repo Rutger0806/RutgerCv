@@ -1,0 +1,26 @@
+---
+import { education } from '../data/education';
+import BackToRing from './BackToRing.astro';
+---
+<section class="sec sec--education" id="education" aria-labelledby="education-title">
+  <div class="sec__head">
+    <h2 id="education-title">Education</h2>
+    <BackToRing />
+  </div>
+  <div class="tl tl--ladder" data-tl>
+    <span class="tl__line" data-tl-line aria-hidden="true"></span>
+    <ol>
+      {education.map((e) => (
+        <li class="tl__item" data-reveal>
+          <p class="tl__period">{e.period}</p>
+          <span class="tl__marker" aria-hidden="true"></span>
+          <div class="tl__body">
+            <h3>{e.title}</h3>
+            <p class="tl__org">{e.org}</p>
+            <p>{e.summary}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>

@@ -1,0 +1,11 @@
+---
+import { profile } from '../data/profile';
+---
+<section class="closing" id="closing" aria-labelledby="closing-title">
+  <div class="halftone-divider" aria-hidden="true"></div>
+  <h2 id="closing-title" data-reveal>{profile.closing.line}</h2>
+  <p data-reveal>{profile.closing.signoff}</p>
+  <ul class="closing__links" data-reveal>
+    {profile.links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}
+  </ul>
+</section>

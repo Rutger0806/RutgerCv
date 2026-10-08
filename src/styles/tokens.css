@@ -1,0 +1,20 @@
+:root {
+  /* palette: cerulean base, cream text, ONE accent (muted orange) */
+  --sky: #1767c9;
+  --sky-deep: #0f4c9a;
+  --sky-ink: #0a3470;
+  --cream: #f6efdd;
+  --cream-dim: rgba(246, 239, 221, 0.88);
+  --accent: #f0913a;
+  /* neutrals pulled from the painting, imagery only */
+  --rock: #5d6b7f;
+  --alpine: #4f6b4a;
+  --hairline: rgba(246, 239, 221, 0.24);
+
+  --font-display: 'Bodoni Moda', 'Didot', 'Times New Roman', serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --gutter: clamp(20px, 5vw, 72px);
+  --measure: 62ch;
+}
