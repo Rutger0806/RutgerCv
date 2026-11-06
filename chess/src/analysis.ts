@@ -49,16 +49,23 @@ export interface GameAnalysis {
 
 export const moverWin = (ev: Ev, white: boolean) => (white ? evWin(ev) : 100 - evWin(ev));
 
+/**
+ * Drempels (winkans-verlies in %) en nauwkeurigheidsformule, gekalibreerd op
+ * Chess.com Game Review: 26 partij-kanten met bekende nauwkeurigheid (rating ~1000-1100)
+ * en de labels van één partij. Zie chess/README.md.
+ */
+export const T = { inaccuracy: 5, mistake: 12, blunder: 26, greatGap: 25, missPrev: 12, accK: 0.16 };
+
 export function classify(loss: number, isBest: boolean): Cls {
   if (isBest || loss < 0.5) return 'best';
   if (loss < 2) return 'excellent';
-  if (loss < 5) return 'good';
-  if (loss < 10) return 'inaccuracy';
-  if (loss < 20) return 'mistake';
+  if (loss < T.inaccuracy) return 'good';
+  if (loss < T.mistake) return 'inaccuracy';
+  if (loss < T.blunder) return 'mistake';
   return 'blunder';
 }
 
-const accOf = (loss: number) => Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1669));
+const accOf = (loss: number) => 100 * Math.exp(-T.accK * loss);
 
 const VAL: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
 export const PIECE_NL: Record<string, string> = { p: 'pion', n: 'paard', b: 'loper', r: 'toren', q: 'dame', k: 'koning' };
@@ -104,8 +111,10 @@ export function summarize(
     const recapture = !!(m.captured && prevMove?.captured && prevMove.to === m.to);
     if (c === 'best' || c === 'excellent') {
       if ((isBest || l < 2) && isSacrifice(m) && after >= 45 && before <= 92 && after >= before - 3) c = 'brilliant';
-      else if (isBest && gap >= 15 && before > 15 && before < 90 && !recapture) c = 'great';
-    } else if ((c === 'inaccuracy' || c === 'mistake') && prevLoss >= 15) c = 'miss';
+      else if (isBest && gap >= T.greatGap && !recapture) c = 'great';
+    }
+    // Chess.com: een slechte zet direct nadat de tegenstander fouten maakte terwijl jij beter stond = "Miss"
+    if ((c === 'inaccuracy' || c === 'mistake' || c === 'blunder') && prevLoss >= T.missPrev && before >= 50) c = 'miss';
     if (book && i < 24 && book.next.get(fenKey(g.fens[i]))?.has(uci)) c = 'book';
     cls.push(c);
     loss.push(l);
