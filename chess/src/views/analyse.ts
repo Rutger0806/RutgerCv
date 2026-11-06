@@ -1,14 +1,17 @@
 import { Chess } from 'chess.js';
 import { Board } from '../board';
-import { liveEngine, batchEngine, evWin, lineToEv, type Ev, type PvLine } from '../engine';
-import { analyseGame, parseGame, summarize, CLS_INFO, moverWin, type Cls, type GameAnalysis, type ParsedGame } from '../analysis';
+import { liveEngine, batchEngine, evWin, lineToEv, sameStrength, type Ev, type PvLine } from '../engine';
+import { analyseGame, parseGame, summarize, CLS_INFO, BAD, KEY, type Cls, type GameAnalysis, type ParsedGame } from '../analysis';
+import { coach } from '../coach';
 import { loadBook, type Book } from '../book';
 import { addPuzzles, hash, savedGames, saveGames, saveSettings, settings } from '../store';
-import { $, esc, fmtEval, pvToSan, uciToSan } from '../util';
+import { $, esc, fmtEval, pvToSan } from '../util';
 
 interface ListedGame {
   label: string;
   pgn: string;
+  res: 'win' | 'loss' | 'draw' | '';
+  speed: string;
 }
 
 export function mount(root: HTMLElement): () => void {
@@ -40,8 +43,17 @@ export function mount(root: HTMLElement): () => void {
         </div>
         <div id="srcBody"></div>
       </section>
+      <section class="card coach" id="coach" hidden>
+        <div class="coachrow"><div class="avatar">♞</div><div class="bubble" id="bubble"></div></div>
+        <div class="row" id="coachBtns">
+          <button data-c="prevkey">◀ Vorig moment</button>
+          <button data-c="nextkey" class="primary">Volgend moment ▶</button>
+          <button data-c="best" id="bBest">💡 Toon beste zet</button>
+          <button data-c="retry" id="bRetry">↻ Probeer opnieuw</button>
+        </div>
+        <label class="inline small"><input type="checkbox" id="both" /> Ook zetten van de tegenstander</label>
+      </section>
       <section class="card" id="status" hidden></section>
-      <section class="card" id="summary" hidden></section>
       <section class="card" id="graphCard" hidden>
         <svg id="graph" viewBox="0 0 400 90" preserveAspectRatio="none"></svg>
       </section>
@@ -50,6 +62,7 @@ export function mount(root: HTMLElement): () => void {
         <div id="engine" class="enginelines"></div>
       </section>
       <section class="card moves" id="moves"><p class="muted">Nog geen partij.</p></section>
+      <section class="card" id="summary" hidden></section>
     </div>
   </div>`;
 
@@ -59,6 +72,9 @@ export function mount(root: HTMLElement): () => void {
     players: $(root, '#players'),
     srcBody: $(root, '#srcBody'),
     status: $(root, '#status'),
+    coach: $(root, '#coach'),
+    bubble: $(root, '#bubble'),
+    both: $<HTMLInputElement>(root, '#both'),
     summary: $(root, '#summary'),
     graphCard: $(root, '#graphCard'),
     graph: $(root, '#graph') as unknown as SVGSVGElement,
@@ -81,10 +97,17 @@ export function mount(root: HTMLElement): () => void {
   let disposed = false;
   let liveEv: Ev | null = null;
   let analysing = false;
+  let meColor: 'w' | 'b' | null = null;
+  let showBest = false;
+  let retry: number | null = null;
+  let retryDone = false;
 
   /* ---------- bron-tabs ---------- */
   let tab = 'pgn';
   let listed: ListedGame[] = [];
+  let archives: string[] = [];
+  let archIdx = -1;
+  let hasMore = false;
   const cfg = settings();
 
   function renderSource() {
@@ -103,10 +126,20 @@ export function mount(root: HTMLElement): () => void {
     } else if (tab === 'chesscom' || tab === 'lichess') {
       const u = tab === 'chesscom' ? cfg.chesscom : cfg.lichess;
       el.srcBody.innerHTML = `<div class="row"><input id="user" placeholder="gebruikersnaam" value="${esc(u)}" />
-        <button class="primary" id="go">Zoek partijen</button></div><div id="list" class="gamelist"></div>`;
-      const go = () => void fetchGames(($(el.srcBody, '#user') as HTMLInputElement).value.trim());
+        <button class="primary" id="go">${u ? 'Vernieuwen' : 'Zoek partijen'}</button></div>
+        <div class="row small"><select id="tc"><option value="">Alle speeltempo\'s</option><option>bullet</option><option>blitz</option><option>rapid</option><option>classical</option><option>daily</option></select>
+        <span class="muted" id="cnt"></span></div>
+        <div id="list" class="gamelist"></div><button id="more" hidden>Oudere partijen laden</button>`;
+      const go = () => {
+        listed = [];
+        archIdx = -1;
+        void fetchGames(($(el.srcBody, '#user') as HTMLInputElement).value.trim());
+      };
       $(el.srcBody, '#go').onclick = go;
-      if (u && listed.length) renderList();
+      $(el.srcBody, '#more').onclick = () => void fetchGames(($(el.srcBody, '#user') as HTMLInputElement).value.trim());
+      ($(el.srcBody, '#tc') as HTMLSelectElement).onchange = () => renderList();
+      if (listed.length) renderList();
+      else if (u) go();
     } else {
       const sg = savedGames();
       el.srcBody.innerHTML = sg.length
@@ -134,14 +167,16 @@ export function mount(root: HTMLElement): () => void {
   function renderList() {
     const box = el.srcBody.querySelector('#list');
     if (!box) return;
-    box.innerHTML = listed.length
-      ? listed.map((g, i) => `<button data-i="${i}">${esc(g.label)}</button>`).join('')
+    const tc = ($(el.srcBody, '#tc') as HTMLSelectElement)?.value ?? '';
+    const shown = listed.filter((g) => !tc || g.speed === tc);
+    const tag = { win: 'Winst', loss: 'Verlies', draw: 'Remise', '': '' };
+    box.innerHTML = shown.length
+      ? shown.map((g) => `<button class="g ${g.res}" data-i="${listed.indexOf(g)}"><b>${tag[g.res]}</b> ${esc(g.label)}</button>`).join('')
       : '<p class="muted">Geen partijen gevonden.</p>';
+    $(el.srcBody, '#cnt').textContent = `${shown.length} partijen`;
+    $(el.srcBody, '#more').hidden = !hasMore;
     box.querySelectorAll<HTMLElement>('[data-i]').forEach((b) => {
-      b.onclick = () => {
-        cfg.depth = cfg.depth || 16;
-        openPgn(listed[+b.dataset.i!].pgn);
-      };
+      b.onclick = () => openPgn(listed[+b.dataset.i!].pgn);
     });
   }
 
@@ -149,38 +184,61 @@ export function mount(root: HTMLElement): () => void {
     if (!user) return;
     const box = el.srcBody.querySelector('#list')!;
     box.innerHTML = '<p class="muted">Laden…</p>';
-    listed = [];
     try {
       if (tab === 'chesscom') {
-        cfg.chesscom = user;
-        const arch = (await (await fetch(`https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`)).json()).archives as string[];
-        for (const url of arch.slice(-2).reverse()) {
-          const data = (await (await fetch(url)).json()).games as any[];
+        const name = user.toLowerCase();
+        if (cfg.chesscom !== user) {
+          cfg.chesscom = user;
+          listed = [];
+          archives = [];
+        }
+        if (!archives.length || archIdx < 0) {
+          const r = await fetch(`https://api.chess.com/pub/player/${name}/games/archives`);
+          if (!r.ok) throw new Error(r.status === 404 ? 'gebruiker niet gevonden' : `HTTP ${r.status}`);
+          archives = ((await r.json()).archives as string[]) ?? [];
+          archIdx = archives.length;
+        }
+        // laad steeds de volgende (oudere) maand tot er genoeg partijen zijn
+        let added = 0;
+        while (archIdx > 0 && added < 15) {
+          archIdx--;
+          const data = (await (await fetch(archives[archIdx])).json()).games as any[];
           for (const g of data.slice().reverse()) {
             if (!g.pgn) continue;
-            const res = g.white.result === 'win' ? '1-0' : g.black.result === 'win' ? '0-1' : '½-½';
+            const mine = g.white.username.toLowerCase() === name ? g.white : g.black;
+            const res = mine.result === 'win' ? 'win' : ['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(mine.result) ? 'draw' : 'loss';
             listed.push({
-              label: `${g.white.username} (${g.white.rating}) – ${g.black.username} (${g.black.rating}) · ${res} · ${g.time_class} · ${new Date(g.end_time * 1000).toLocaleDateString('nl-NL')}`,
+              label: `${g.white.username} (${g.white.rating}) – ${g.black.username} (${g.black.rating}) · ${g.time_class} · ${new Date(g.end_time * 1000).toLocaleDateString('nl-NL')}`,
               pgn: g.pgn,
+              res,
+              speed: g.time_class,
             });
+            added++;
           }
         }
+        hasMore = archIdx > 0;
       } else {
         cfg.lichess = user;
         const txt = await (
-          await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=30&pgnInJson=true&opening=true`, {
+          await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(user)}?max=40&pgnInJson=true&opening=true`, {
             headers: { Accept: 'application/x-ndjson' },
           })
         ).text();
+        listed = [];
         for (const l of txt.trim().split('\n')) {
           if (!l) continue;
           const g = JSON.parse(l);
-          const res = g.winner === 'white' ? '1-0' : g.winner === 'black' ? '0-1' : '½-½';
+          const wn = g.players.white.user?.name ?? 'anoniem';
+          const iAmWhite = wn.toLowerCase() === user.toLowerCase();
+          const res = !g.winner ? 'draw' : (g.winner === 'white') === iAmWhite ? 'win' : 'loss';
           listed.push({
-            label: `${g.players.white.user?.name ?? 'anoniem'} – ${g.players.black.user?.name ?? 'anoniem'} · ${res} · ${g.speed} · ${new Date(g.createdAt).toLocaleDateString('nl-NL')}`,
+            label: `${wn} – ${g.players.black.user?.name ?? 'anoniem'} · ${g.speed} · ${new Date(g.createdAt).toLocaleDateString('nl-NL')}`,
             pgn: g.pgn,
+            res,
+            speed: g.speed,
           });
         }
+        hasMore = false;
       }
       saveSettings(cfg);
     } catch (e) {
@@ -191,7 +249,7 @@ export function mount(root: HTMLElement): () => void {
   }
 
   /* ---------- partij openen & analyseren ---------- */
-  function openPgn(pgn: string, saved?: { evals: [number, number | null][]; best: (string | null)[]; depth: number }) {
+  function openPgn(pgn: string, saved?: { evals: [number, number | null][]; best: (string | null)[]; depth: number; alt?: ([number, number | null] | null)[] }) {
     token++;
     batchEngine().stop();
     try {
@@ -209,14 +267,19 @@ export function mount(root: HTMLElement): () => void {
     ply = 0;
     const h = game.headers;
     const me = [cfg.chesscom, cfg.lichess].filter(Boolean).map((s) => s.toLowerCase());
-    orient = me.includes((h.Black ?? '').toLowerCase()) ? 'black' : 'white';
+    meColor = me.includes((h.White ?? '').toLowerCase()) ? 'w' : me.includes((h.Black ?? '').toLowerCase()) ? 'b' : null;
+    orient = meColor === 'b' ? 'black' : 'white';
+    el.both.checked = !meColor;
+    retry = null;
+    showBest = false;
     el.players.innerHTML = `<b>${esc(h.White ?? '?')}</b> ${h.WhiteElo ? `(${esc(h.WhiteElo)})` : ''} – <b>${esc(h.Black ?? '?')}</b> ${h.BlackElo ? `(${esc(h.BlackElo)})` : ''} · ${esc(h.Result ?? '*')}`;
     el.summary.hidden = true;
     el.graphCard.hidden = true;
     renderMoves();
     if (saved) {
       const evals = saved.evals.map(([cp, mate]) => ({ cp, mate }));
-      an = summarize(game, evals, saved.best, book, saved.depth);
+      const alt = ((saved as { alt?: ([number, number | null] | null)[] }).alt ?? []).map((a) => (a ? { cp: a[0], mate: a[1] } : null));
+      an = summarize(game, evals, saved.best, book, saved.depth, alt);
       finishAnalysis();
     } else {
       void runAnalysis();
@@ -263,6 +326,7 @@ export function mount(root: HTMLElement): () => void {
       pgn: pgnOf(g),
       evals: res.evals.map((e) => [e.cp, e.mate]),
       best: res.best,
+      alt: res.alt.map((e) => (e ? [e.cp, e.mate] : null)),
       depth: res.depth,
     });
     saveGames(list.slice(0, 40));
@@ -285,7 +349,7 @@ export function mount(root: HTMLElement): () => void {
   }
 
   /* ---------- weergave ---------- */
-  const curFen = () => (explore ? explore[explore.length - 1] : game ? game.fens[ply] : new Chess().fen());
+  const curFen = () => (explore ? explore[explore.length - 1] : game ? game.fens[retry != null ? retry - 1 : ply] : new Chess().fen());
 
   function currentEv(): Ev | null {
     if (explore) return liveEv;
@@ -299,38 +363,45 @@ export function mount(root: HTMLElement): () => void {
     const m = !explore && game && ply > 0 ? game.moves[ply - 1] : null;
     const arrows: { from: string; to: string; color?: string }[] = [];
     let comment = '';
+    let badge: { sq: string; text: string; color: string } | null = null;
     if (explore) {
       comment = 'Probeer-modus: verzet stukken om varianten te testen. <button class="link" id="back">Terug naar de partij</button>';
     } else if (game && m) {
       const n = Math.ceil(ply / 2);
       const label = `${n}${m.color === 'w' ? '.' : '...'} ${m.san}`;
+      comment = `<b>${esc(label)}</b>`;
       if (an) {
         const c = an.cls[ply - 1];
         const info = CLS_INFO[c];
-        comment = `<b>${esc(label)}</b> <span class="badge" style="background:${info.color}">${info.sym} ${info.label}</span>`;
-        if (c === 'book' && book) {
-          const nm = book.nameAt.get(fen.split(' ').slice(0, 4).join(' '));
-          if (nm) comment += ` <span class="muted">${esc(nm.name)}</span>`;
-        }
-        if (c === 'inaccuracy' || c === 'mistake' || c === 'blunder') {
-          const b = an.best[ply - 1];
-          const san = b ? uciToSan(game.fens[ply - 1], b) : null;
-          if (san) comment += `<br>Beter was <b>${esc(san)}</b> <span class="muted">(−${an.loss[ply - 1].toFixed(0)}% winkans)</span>`;
-          if (b) arrows.push({ from: b.slice(0, 2), to: b.slice(2, 4), color: 'green' });
-        }
-      } else comment = `<b>${esc(label)}</b>`;
+        comment += ` <span class="badge" style="background:${info.color}">${info.sym} ${info.label}</span>`;
+        if (c !== 'good' && c !== 'excellent') badge = { sq: m.to, text: info.mark, color: info.color };
+        const b = an.best[ply - 1];
+        if (showBest && b && BAD.includes(c)) arrows.push({ from: b.slice(0, 2), to: b.slice(2, 4), color: 'green' });
+      }
     } else if (game) comment = 'Beginstelling.';
     el.comment.innerHTML = comment;
     $(el.comment, '#back')?.addEventListener('click', () => {
       explore = null;
       update();
     });
-    board.show(fen, {
-      orientation: orient,
-      lastMove: m ? [m.from, m.to] : null,
-      movable: explore ? 'both' : null,
-      arrows,
-    });
+    if (retry != null && game) {
+      const rm = game.moves[retry - 1];
+      const prev = retry > 1 ? game.moves[retry - 2] : null;
+      board.show(fen, {
+        orientation: orient,
+        lastMove: prev ? [prev.from, prev.to] : null,
+        movable: retryDone ? null : rm.color === 'w' ? 'white' : 'black',
+      });
+    } else {
+      board.show(fen, {
+        orientation: orient,
+        lastMove: m ? [m.from, m.to] : null,
+        movable: explore ? 'both' : null,
+        arrows,
+        badge: explore ? null : badge,
+      });
+    }
+    renderCoach();
     // zet-lijst markering
     el.moves.querySelectorAll('.on').forEach((n) => n.classList.remove('on'));
     const cell = el.moves.querySelector(`[data-ply="${ply}"]`);
@@ -359,6 +430,11 @@ export function mount(root: HTMLElement): () => void {
   /* ---------- live engine ---------- */
   function startLive() {
     const eng = liveEngine();
+    if (retry != null) {
+      eng.stop();
+      el.engine.innerHTML = '<p class="muted">Engine verborgen tijdens “Probeer opnieuw”.</p>';
+      return;
+    }
     if (analysing) {
       el.engine.innerHTML = '<p class="muted">Engine wacht tot de partij-analyse klaar is…</p>';
       return;
@@ -400,7 +476,33 @@ export function mount(root: HTMLElement): () => void {
   }
   el.engOn.onchange = () => update();
 
-  function onUserMove(m: { from: string; to: string; promotion?: string }) {
+  async function onUserMove(m: { from: string; to: string; promotion?: string }) {
+    if (retry != null && game && an && !retryDone) {
+      const i = retry - 1;
+      const fen0 = game.fens[i];
+      const c0 = new Chess(fen0);
+      try {
+        c0.move(m);
+      } catch {
+        update();
+        return;
+      }
+      const uci = m.from + m.to + (m.promotion ?? '');
+      const bestU = an.best[i] ?? uci;
+      board.show(c0.fen(), { orientation: orient, lastMove: [m.from, m.to], movable: null });
+      el.bubble.innerHTML = 'Even checken…';
+      const ok = await sameStrength(fen0, bestU, uci, 5);
+      if (disposed || retry == null) return;
+      if (ok) {
+        retryDone = true;
+        el.bubble.innerHTML = '<b>Goed!</b> 🎉 Dat is een sterke zet. Ga verder met “Volgend moment”.';
+      } else {
+        board.shake();
+        el.bubble.innerHTML = 'Niet helemaal — probeer een andere zet, of laat de beste zet zien.';
+        board.show(fen0, { orientation: orient, movable: game.moves[i].color === 'w' ? 'white' : 'black' });
+      }
+      return;
+    }
     if (!explore) return;
     const c = new Chess(curFen());
     try {
@@ -415,11 +517,94 @@ export function mount(root: HTMLElement): () => void {
     startLive();
   }
 
+  /* ---------- coach ---------- */
+  const keyPlies = () => {
+    if (!an || !game) return [] as number[];
+    const both = el.both.checked || !meColor;
+    const out: number[] = [];
+    an.cls.forEach((c, i) => {
+      if (KEY.includes(c) && (both || game!.moves[i].color === meColor)) out.push(i + 1);
+    });
+    return out;
+  };
+
+  function renderCoach() {
+    if (!an || !game) {
+      el.coach.hidden = true;
+      return;
+    }
+    el.coach.hidden = false;
+    const btn = (id: string) => $<HTMLButtonElement>(el.coach, id);
+    let html = '';
+    let canBest = false;
+    if (explore) html = 'Probeer maar wat varianten uit. De engine rekent mee aan de rechterkant.';
+    else if (retry != null) {
+      html = retryDone ? el.bubble.innerHTML : 'Zoek een betere zet dan in de partij. Ik kijk straks of hij sterk genoeg is.';
+      canBest = !retryDone;
+    } else if (ply === 0) {
+      const mine = meColor ? (meColor === 'w' ? an.acc.w : an.acc.b) : null;
+      const keys = keyPlies();
+      const bl = keys.filter((p) => an!.cls[p - 1] === 'blunder').length;
+      const br = keys.filter((p) => an!.cls[p - 1] === 'brilliant').length;
+      let opening = '';
+      if (book) {
+        for (let i = game.moves.length; i >= 0; i--) {
+          const nm = book.nameAt.get(game.fens[i].split(' ').slice(0, 4).join(' '));
+          if (nm) {
+            opening = nm.name;
+            break;
+          }
+        }
+      }
+      html = `Hoi! Ik loop de partij met je door. ${mine != null ? `Jouw nauwkeurigheid: <b>${mine.toFixed(1)}%</b>. ` : `Nauwkeurigheid: wit <b>${an.acc.w.toFixed(1)}%</b>, zwart <b>${an.acc.b.toFixed(1)}%</b>. `}
+        Er ${keys.length === 1 ? 'is' : 'zijn'} <b>${keys.length}</b> sleutelmoment${keys.length === 1 ? '' : 'en'}${bl ? ` (waarvan ${bl} blunder${bl > 1 ? 's' : ''})` : ''}${br ? `, en ${br} briljante zet${br > 1 ? 'ten' : ''}!` : '.'}
+        ${opening ? `<br>Opening: <i>${esc(opening)}</i>.` : ''}<br>Klik op <b>Volgend moment</b> om te beginnen.`;
+    } else {
+      const co = coach(game, an, ply - 1, book);
+      html = co.html;
+      canBest = !!co.best;
+    }
+    el.bubble.innerHTML = html;
+    btn('#bBest').hidden = !canBest;
+    btn('#bRetry').hidden = !(ply > 0 && !explore && retry == null && BAD.includes(an.cls[ply - 1]) && !!an.best[ply - 1]);
+    btn('#bBest').textContent = showBest ? 'Verberg beste zet' : '💡 Toon beste zet';
+  }
+
+  el.coach.addEventListener('click', (e) => {
+    const c = (e.target as HTMLElement).dataset.c;
+    if (!c || !game || !an) return;
+    const keys = keyPlies();
+    if (c === 'nextkey') {
+      const n = keys.find((p) => p > ply && retry == null) ?? keys.find((p) => p > (retry ?? ply));
+      if (n) goto(n);
+      else {
+        goto(game.moves.length);
+        el.bubble.innerHTML = 'Dat waren alle sleutelmomenten. Bewaar je fouten als puzzels om ze later te oefenen!';
+      }
+    } else if (c === 'prevkey') {
+      const prev = [...keys].reverse().find((p) => p < (retry ?? ply));
+      goto(prev ?? 0);
+    } else if (c === 'best') {
+      if (retry != null) {
+        const b = an.best[retry - 1];
+        if (b) board.setArrows([{ from: b.slice(0, 2), to: b.slice(2, 4), color: 'green' }]);
+      } else {
+        showBest = !showBest;
+        update();
+      }
+    } else if (c === 'retry') {
+      retry = ply;
+      retryDone = false;
+      update();
+    }
+  });
+  el.both.onchange = () => renderCoach();
+
   /* ---------- samenvatting, grafiek, zetten ---------- */
   function renderSummary() {
     if (!an || !game) return;
     const count = (white: boolean, c: Cls) => an!.cls.filter((x, i) => x === c && (game!.moves[i].color === 'w') === white).length;
-    const order: Cls[] = ['book', 'best', 'excellent', 'good', 'inaccuracy', 'mistake', 'blunder'];
+    const order: Cls[] = ['brilliant', 'great', 'book', 'best', 'excellent', 'good', 'inaccuracy', 'miss', 'mistake', 'blunder'];
     el.summary.hidden = false;
     el.summary.innerHTML = `
       <div class="acc"><div><small>${esc(game.headers.White ?? 'Wit')}</small><b>${an.acc.w.toFixed(1)}%</b></div>
@@ -435,7 +620,7 @@ export function mount(root: HTMLElement): () => void {
       const color = orient === 'white' ? 'w' : 'b';
       const items = game.moves
         .map((m, i) => ({ m, i }))
-        .filter(({ m, i }) => m.color === color && (an!.cls[i] === 'mistake' || an!.cls[i] === 'blunder') && an!.best[i])
+        .filter(({ m, i }) => m.color === color && (an!.cls[i] === 'mistake' || an!.cls[i] === 'blunder' || an!.cls[i] === 'miss') && an!.best[i])
         .map(({ i }) => ({
           id: `m-${hash(game!.fens[i])}`,
           fen: game!.fens[i],
@@ -456,7 +641,7 @@ export function mount(root: HTMLElement): () => void {
     const pts = an.evals.map((e, i) => [(i / n) * 400, 90 - evWin(e) * 0.9]);
     const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
     const dots = an.cls
-      .map((c, i) => (c === 'blunder' || c === 'mistake' ? `<circle cx="${pts[i + 1][0]}" cy="${pts[i + 1][1]}" r="2.6" fill="${CLS_INFO[c].color}" />` : ''))
+      .map((c, i) => (c === 'blunder' || c === 'mistake' || c === 'brilliant' ? `<circle cx="${pts[i + 1][0]}" cy="${pts[i + 1][1]}" r="2.6" fill="${CLS_INFO[c].color}" />` : ''))
       .join('');
     el.graph.innerHTML = `<rect width="400" height="90" fill="#262421"/><polygon points="0,90 ${line} 400,90" fill="#e8e6e3" opacity=".85"/>
       <line x1="0" x2="400" y1="45" y2="45" stroke="#7a7570" stroke-dasharray="2 3" stroke-width=".6"/>${dots}
@@ -481,9 +666,9 @@ export function mount(root: HTMLElement): () => void {
       const m = g.moves[i];
       if (!m) return '<span></span>';
       const c = an?.cls[i];
-      const bad = c === 'inaccuracy' || c === 'mistake' || c === 'blunder';
+      const bad = !!c && BAD.includes(c);
       const ev = an ? an.evals[i + 1] : null;
-      return `<button data-ply="${i + 1}" class="mv ${bad ? c : ''}">${esc(m.san)}${c && c !== 'good' && c !== 'excellent' && c !== 'best' ? `<i style="color:${CLS_INFO[c].color}">${CLS_INFO[c].sym}</i>` : ''}${ev ? `<small>${fmtEval(ev.mate == null ? ev.cp : null, ev.mate)}</small>` : ''}</button>`;
+      return `<button data-ply="${i + 1}" class="mv ${bad ? c : ''}">${esc(m.san)}${c && c !== 'good' && c !== 'excellent' && c !== 'best' && c !== 'book' ? `<i style="color:${CLS_INFO[c].color}">${CLS_INFO[c].sym}</i>` : ''}${ev ? `<small>${fmtEval(ev.mate == null ? ev.cp : null, ev.mate)}</small>` : ''}</button>`;
     };
     let html = '';
     for (let i = 0; i < g.moves.length; i += 2) html += `<div class="mrow"><span class="num">${i / 2 + 1}.</span>${cell(i)}${cell(i + 1)}</div>`;
@@ -494,6 +679,9 @@ export function mount(root: HTMLElement): () => void {
   function goto(p: number) {
     if (!game) return;
     explore = null;
+    retry = null;
+    retryDone = false;
+    showBest = false;
     ply = Math.max(0, Math.min(game.moves.length, p));
     update();
   }

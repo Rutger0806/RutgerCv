@@ -97,3 +97,16 @@ label.inline { display: flex; gap: 8px; align-items: center; }
 .promo button { font-size: 42px; padding: 2px 12px; }
 .shake { animation: shake .3s; }
 @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+.coachrow { display: flex; gap: 12px; align-items: flex-start; }
+.avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--green); color: #14200a; font-size: 34px; display: grid; place-items: center; }
+.bubble { flex: 1; background: var(--panel2); border-radius: 4px 14px 14px 14px; padding: 10px 14px; min-height: 52px; }
+.coach .row { margin-bottom: 4px; }
+.small { font-size: 13px; }
+.gamelist > button.g { border-left: 4px solid var(--line); flex-direction: row; gap: 8px; align-items: baseline; }
+.gamelist > button.g b { min-width: 52px; }
+.gamelist > button.win { border-left-color: var(--green); }
+.gamelist > button.loss { border-left-color: var(--red); }
+.gamelist > button.draw { border-left-color: var(--muted); }
+#more { margin-top: 6px; width: 100%; }
+@media (min-width: 861px) { .layout > .left { position: sticky; top: 64px; } }

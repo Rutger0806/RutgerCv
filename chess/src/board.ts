@@ -25,10 +25,21 @@ export interface ShowOpts {
   /** Welke kleur mag de gebruiker verzetten? null = bord is vergrendeld. */
   movable?: 'white' | 'black' | 'both' | null;
   arrows?: Arrow[];
+  badge?: { sq: string; text: string; color: string } | null;
 }
 
-const toShapes = (arrows: Arrow[]): DrawShape[] =>
-  arrows.map((a) => ({ orig: a.from as Key, dest: a.to as Key, brush: a.color ?? 'green' }));
+const toShapes = (arrows: Arrow[], badge?: ShowOpts['badge']): DrawShape[] => {
+  const out: DrawShape[] = arrows.map((a) => ({ orig: a.from as Key, dest: a.to as Key, brush: a.color ?? 'green' }));
+  if (badge) {
+    out.push({
+      orig: badge.sq as Key,
+      customSvg: {
+        html: `<g transform="translate(62,2)"><circle cx="18" cy="18" r="18" fill="${badge.color}" stroke="#fff" stroke-width="2"/><text x="18" y="25" font-size="${badge.text.length > 1 ? 18 : 22}" font-weight="800" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">${badge.text}</text></g>`,
+      },
+    });
+  }
+  return out;
+};
 
 export class Board {
   cg: Api;
@@ -70,7 +81,7 @@ export class Board {
       check: chess.inCheck() ? side : false,
       lastMove: (o.lastMove ?? undefined) as Key[] | undefined,
       movable: { color: allowed ? side : undefined, dests, free: false },
-      drawable: { autoShapes: toShapes(o.arrows ?? []) },
+      drawable: { autoShapes: toShapes(o.arrows ?? [], o.badge) },
     });
     this.closePromo();
   }

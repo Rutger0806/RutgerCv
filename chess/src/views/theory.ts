@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { Board, type UserMove } from '../board';
-import { evWin, liveEngine, lineToEv } from '../engine';
+import { evWin, liveEngine, lineToEv, sameStrength } from '../engine';
 import { addPuzzles, puzzles, recordPuzzle, savePuzzles, type Puzzle } from '../store';
 import { $, esc, fmtEval, sleep, uciToSan } from '../util';
 
@@ -349,7 +349,7 @@ export function mount(root: HTMLElement): () => void {
       return;
     }
     if (!ok && probe.isCheckmate()) ok = true; // elke matzet telt
-    if (!ok && cur.source === 'mistake') ok = await equivalent(pz.fen(), expected, uci);
+    if (!ok && cur.source === 'mistake') ok = await sameStrength(pz.fen(), expected, uci);
     if (disposed) return;
     if (!ok) {
       if (!failedOnce) recordPuzzle(cur.id, false);
@@ -377,22 +377,6 @@ export function mount(root: HTMLElement): () => void {
     idx++;
     showPuz(reply, null);
     say('✓ Goed. Wat nu?', 'ok');
-  }
-
-  /** Is `uci` ongeveer even sterk als de opgeslagen beste zet? */
-  async function equivalent(fen: string, best: string, uci: string): Promise<boolean> {
-    const eng = liveEngine();
-    const win = async (u: string) => {
-      const c = new Chess(fen);
-      c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
-      if (c.isCheckmate()) return c.turn() === 'w' ? 0 : 100;
-      const l = (await eng.analyse(c.fen(), { depth: 14, multipv: 1 }))[0];
-      return l ? evWin(lineToEv(l)) : 50;
-    };
-    const white = new Chess(fen).turn() === 'w';
-    const [a, b] = [await win(best), await win(uci)];
-    const diff = white ? a - b : b - a;
-    return diff <= 4;
   }
 
   render();

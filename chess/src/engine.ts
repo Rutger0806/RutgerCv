@@ -147,3 +147,19 @@ let live: Engine | null = null;
 let batch: Engine | null = null;
 export const liveEngine = () => (live ??= new Engine());
 export const batchEngine = () => (batch ??= new Engine());
+
+/** Is `uci` ongeveer even sterk (≤ tol% winkans verlies) als `best` in deze stelling? */
+export async function sameStrength(fen: string, best: string, uci: string, tol = 4): Promise<boolean> {
+  if (best === uci) return true;
+  const eng = liveEngine();
+  const win = async (u: string) => {
+    const c = new Chess(fen);
+    c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+    if (c.isCheckmate()) return c.turn() === 'w' ? 0 : 100;
+    const l = (await eng.analyse(c.fen(), { depth: 14, multipv: 1 }))[0];
+    return l ? evWin(lineToEv(l)) : 50;
+  };
+  const white = new Chess(fen).turn() === 'w';
+  const [a, b] = [await win(best), await win(uci)];
+  return (white ? a - b : b - a) <= tol;
+}

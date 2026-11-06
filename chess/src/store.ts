@@ -75,6 +75,7 @@ export interface SavedGame {
   pgn: string;
   evals: [number, number | null][];
   best: (string | null)[];
+  alt?: ([number, number | null] | null)[];
   depth: number;
 }
 export const savedGames = () => load<SavedGame[]>('games', []);

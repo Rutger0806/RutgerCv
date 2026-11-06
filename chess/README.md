@@ -8,7 +8,7 @@ npm run dev      # ontwikkelen
 npm run build    # statische site in dist/ (werkt vanaf elke host)
 ```
 
-- **Analyse**: PGN plakken, of partijen ophalen van Chess.com/Lichess. Per zet: evaluatie, classificatie (beste … blunder), nauwkeurigheid, evaluatiegrafiek, live engine-lijnen en een proefmodus. Fouten opslaan als puzzels.
+- **Analyse**: PGN plakken of partijen ophalen van je Chess.com/Lichess-account (met filters en winst/verlies-kleuren). Game review met coach: briljante/geweldige zetten, gemiste kansen, uitleg per zet, "Probeer opnieuw" en sprongen tussen sleutelmomenten. Plus evaluatiegrafiek, live engine-lijnen en proefmodus.
 - **Openingen**: ~3.900 ECO-openingen (Lichess-data). Verkennen met boekzetten, repertoire samenstellen (wit/zwart) en oefenen met willekeurige tegenstander-zetten en hints.
 - **Theorie & puzzels**: eindspelen spelen tegen Stockfish (Lucena, Philidor, matpatronen…), eigen fouten met spaced repetition, Lichess-puzzels importeren.
 
