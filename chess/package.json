@@ -1,0 +1,20 @@
+{
+  "name": "rutger-chess",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "chessground": "^9.2.1",
+    "stockfish": "^19.0.1",
+    "vite": "^8.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
