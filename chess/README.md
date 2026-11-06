@@ -13,3 +13,4 @@ npm run build    # statische site in dist/ (werkt vanaf elke host)
 - **Theorie & puzzels**: eindspelen spelen tegen Stockfish (Lucena, Philidor, matpatronen…), eigen fouten met spaced repetition, Lichess-puzzels importeren.
 
 Openingsdata verversen: `node scripts/build-openings.mjs`.
+- **Dagtraining**: kies een dag, haal je Chess.com/Lichess-partijen van die dag op, analyseer ze en krijg een rapport met je meest gemaakte soorten fouten (mat toegestaan, stukken weggegeven, gemiste tactiek, opening/eindspel…), een oefenplan, openingslekken en automatisch aangemaakte puzzels per thema.

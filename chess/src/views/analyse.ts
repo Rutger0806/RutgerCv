@@ -5,7 +5,7 @@ import { analyseGame, parseGame, summarize, CLS_INFO, BAD, KEY, type Cls, type G
 import { coach } from '../coach';
 import { loadBook, type Book } from '../book';
 import { addPuzzles, hash, savedGames, saveGames, saveSettings, settings } from '../store';
-import { $, esc, fmtEval, pvToSan } from '../util';
+import { $, esc, fmtEval, load, pvToSan, save } from '../util';
 
 interface ListedGame {
   label: string;
@@ -718,6 +718,12 @@ export function mount(root: HTMLElement): () => void {
   window.addEventListener('keydown', onKey);
 
   renderSource();
+  const wanted = load<string | null>('openGame', null);
+  if (wanted) {
+    save('openGame', null);
+    const g = savedGames().find((x) => x.id === wanted);
+    if (g) openPgn(g.pgn, g);
+  }
   board.show(new Chess().fen(), { orientation: 'white', movable: null });
   startLive();
 

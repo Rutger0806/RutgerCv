@@ -110,3 +110,15 @@ label.inline { display: flex; gap: 8px; align-items: center; }
 .gamelist > button.draw { border-left-color: var(--muted); }
 #more { margin-top: 6px; width: 100%; }
 @media (min-width: 861px) { .layout > .left { position: sticky; top: 64px; } }
+.page.wide { max-width: 820px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; text-align: center; }
+.stats b { display: block; font-size: 24px; }
+.stats small { color: var(--muted); }
+.plan { padding-left: 20px; } .plan li { margin: 10px 0; }
+.theme { border-top: 1px solid var(--line); padding: 10px 0; }
+.thead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.ticon { font-size: 20px; }
+.ex { margin: 4px 0; font-size: 14px; }
+.bar { display: grid; grid-template-columns: 90px 1fr 30px; gap: 8px; align-items: center; margin: 6px 0; }
+.bar div { background: #1f1d1b; height: 12px; border-radius: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--green); }

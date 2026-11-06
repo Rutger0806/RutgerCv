@@ -84,10 +84,16 @@ export function mount(root: HTMLElement): () => void {
   let source = 'all-white';
   let msg = '';
 
+  const startSrc = load<string | null>('openingsStart', null);
+  if (startSrc) save('openingsStart', null);
   void loadBook().then((b) => {
     book = b;
     renderPanel();
     refresh();
+    if (startSrc) {
+      source = startSrc;
+      $(root, '[data-m=practice]').click();
+    }
   });
 
   /* ---------- gemeenschappelijk ---------- */

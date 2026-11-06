@@ -17,6 +17,7 @@ export interface Puzzle {
   setup: boolean;
   title: string;
   source: 'mistake' | 'import';
+  tags?: string[];
   rating?: number;
   box: number;
   due: number;
@@ -30,11 +31,17 @@ export const savePuzzles = (p: Puzzle[]) => save('puzzles', p);
 
 export function addPuzzles(items: Omit<Puzzle, 'box' | 'due' | 'solved' | 'failed'>[]): number {
   const cur = puzzles();
-  const ids = new Set(cur.map((p) => p.id));
+  const byId = new Map(cur.map((p) => [p.id, p]));
   let n = 0;
   for (const it of items) {
-    if (ids.has(it.id)) continue;
-    cur.push({ ...it, box: 0, due: 0, solved: 0, failed: 0 });
+    const ex = byId.get(it.id);
+    if (ex) {
+      ex.tags = [...new Set([...(ex.tags ?? []), ...(it.tags ?? [])])];
+      continue;
+    }
+    const p: Puzzle = { ...it, box: 0, due: 0, solved: 0, failed: 0 };
+    cur.push(p);
+    byId.set(p.id, p);
     n++;
   }
   savePuzzles(cur);

@@ -2,7 +2,7 @@ import { Chess } from 'chess.js';
 import { Board, type UserMove } from '../board';
 import { evWin, liveEngine, lineToEv, sameStrength } from '../engine';
 import { addPuzzles, puzzles, recordPuzzle, savePuzzles, type Puzzle } from '../store';
-import { $, esc, fmtEval, sleep, uciToSan } from '../util';
+import { $, esc, fmtEval, load, save, sleep, uciToSan } from '../util';
 
 interface Lesson {
   id: string;
@@ -224,14 +224,17 @@ export function mount(root: HTMLElement): () => void {
   let failedOnce = false;
   let solvedState = false;
   let impMsg = '';
+  let pFilter = '';
 
   function renderPuz() {
     const all = puzzles();
     const due = all.filter((p) => p.due <= Date.now());
+    const tags = [...new Set(all.flatMap((p) => p.tags ?? []))].sort().reverse();
+    const tagOpts = tags.map((t) => `<option value="tag:${esc(t)}" ${t === pFilter ? 'selected' : ''}>${esc(t)}</option>`).join('');
     panel.innerHTML = `
       <p><b>${all.length}</b> puzzels · <b>${due.length}</b> om te herhalen · ${all.filter((p) => p.source === 'mistake').length} eigen fouten</p>
       <div class="row"><button class="primary" id="next" ${all.length ? '' : 'disabled'}>${due.length ? 'Volgende puzzel' : 'Oefen toch'}</button>
-        <select id="filter"><option value="all">Alles</option><option value="mistake">Alleen eigen fouten</option><option value="import">Alleen geïmporteerd</option></select></div>
+        <select id="filter"><option value="all">Alles</option><option value="mistake">Alleen eigen fouten</option><option value="import">Alleen geïmporteerd</option>${tagOpts}</select></div>
       <details ${all.length ? '' : 'open'}><summary>Puzzels importeren (Lichess)</summary>
         <p class="muted">Download <code>lichess_db_puzzle.csv.zst</code> van database.lichess.org, pak het uit en kies hier het bestand (alleen het eerste deel wordt gelezen), of plak regels.</p>
         <div class="row"><label>Rating <input id="rmin" type="number" value="1000" style="width:5em"/> – <input id="rmax" type="number" value="1800" style="width:5em"/></label>
@@ -244,6 +247,7 @@ export function mount(root: HTMLElement): () => void {
       <h4>Eigen fouten uit je partijen</h4>
       <p class="muted">Analyseer een partij en klik op "Bewaar fouten als puzzels" — ze komen hier terug met spaced repetition.</p>`;
     $(panel, '#next').onclick = () => nextPuzzle(($(panel, '#filter') as HTMLSelectElement).value);
+    if (pFilter) ($(panel, '#filter') as HTMLSelectElement).value = 'tag:' + pFilter;
     $(panel, '#imp').onclick = async () => {
       const f = ($(panel, '#file') as HTMLInputElement).files?.[0];
       const text = f ? await f.slice(0, 6_000_000).text() : ($(panel, '#csv') as HTMLTextAreaElement).value;
@@ -276,7 +280,7 @@ export function mount(root: HTMLElement): () => void {
   }
 
   function nextPuzzle(filter: string) {
-    let pool = puzzles().filter((p) => filter === 'all' || p.source === filter);
+    let pool = puzzles().filter((p) => filter === 'all' || (filter.startsWith('tag:') ? p.tags?.includes(filter.slice(4)) : p.source === filter));
     const due = pool.filter((p) => p.due <= Date.now());
     if (due.length) pool = due;
     if (!pool.length) {
@@ -381,6 +385,18 @@ export function mount(root: HTMLElement): () => void {
 
   render();
   board.show(new Chess().fen(), { movable: null });
+
+  // gestart vanuit de dagtraining?
+  const start = load<{ tab: 'end' | 'puz'; tag?: string; lesson?: string } | null>('theoryStart', null);
+  if (start) {
+    save('theoryStart', null);
+    $(root, `#tt [data-t=${start.tab}]`).click();
+    if (start.tab === 'puz' && start.tag) {
+      pFilter = start.tag;
+      renderPuz();
+      nextPuzzle('tag:' + start.tag);
+    } else if (start.tab === 'end' && start.lesson) startLesson(LESSONS.find((l) => l.id === start.lesson)!);
+  }
 
   return () => {
     disposed = true;

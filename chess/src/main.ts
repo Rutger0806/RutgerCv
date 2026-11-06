@@ -4,6 +4,7 @@ import { $ } from './util';
 type View = { mount: (root: HTMLElement) => () => void };
 const views: Record<string, () => Promise<View>> = {
   analyse: () => import('./views/analyse'),
+  day: () => import('./views/day'),
   openings: () => import('./views/openings'),
   theory: () => import('./views/theory'),
   settings: () => import('./views/settings'),
