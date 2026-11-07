@@ -3,7 +3,8 @@ import { Board, type UserMove } from '../board';
 import { bookMoves, loadBook, type Book, type Opening } from '../book';
 import { COURSES, LEVEL, buildTree, type Course, type TNode } from '../courses';
 import { repertoire, saveRepertoire, type RepLine } from '../store';
-import { $, esc, fenKey, load, save } from '../util';
+import { liveEngine, sameStrength } from '../engine';
+import { $, esc, fenKey, load, save, uciToSan } from '../util';
 
 type Mode = 'learn' | 'explore' | 'rep';
 type Stage = 'intro' | 'study' | 'practice';
@@ -109,6 +110,9 @@ export function mount(root: HTMLElement): () => void {
   let studyMistakes = 0;
   let studyHint: { from: string; to: string } | null = null;
   let showNotes = true;
+  let deviate = load<boolean>('deviate', true);
+  let pDeviated = false;
+  let pFree: { left: number; fails: number; busy: boolean; best: string | null } | null = null;
   let practiceActive = false;
   let pMistakes = 0;
   let pTotal = 0;
@@ -631,6 +635,8 @@ export function mount(root: HTMLElement): () => void {
     pMistakes = 0;
     pTotal = 0;
     pHint = null;
+    pDeviated = false;
+    pFree = null;
     pIntro = `Jij speelt ${c.side === 'white' ? 'wit' : 'zwart'}. ${c.side === 'white' ? 'Begin met de juiste zet.' : 'Wit begint, wacht op zijn zet.'}`;
     pMine = '';
     pOpp = '';
@@ -648,6 +654,7 @@ export function mount(root: HTMLElement): () => void {
     const st = stats()[c.id];
     panel.innerHTML = `${courseHead('Oefenmodus: speel de juiste zetten uit je hoofd.')}
       <label class="switch"><input type="checkbox" id="notes" ${showNotes ? 'checked' : ''}/><span>Uitleg tonen na elke zet</span></label>
+      <label class="switch"><input type="checkbox" id="dev" ${deviate ? 'checked' : ''}/><span>Tegenstander mag afwijken van de theorie</span></label>
       <div class="feedback" id="fb">${pErr || pMine || pOpp ? `${pErr}${pErr ? '' : pMine}${pErr ? '' : pOpp}` : pIntro}</div>
       ${
         done
@@ -659,6 +666,10 @@ export function mount(root: HTMLElement): () => void {
       <p class="muted small">${st?.runs ? `Tot nu toe: ${st.runs} rondes, ${st.clean} foutloos.` : 'Elke ronde kiest je tegenstander een andere variant.'}</p>`;
     wireHead();
     $<HTMLInputElement>(panel, '#notes').onchange = (e) => (showNotes = (e.target as HTMLInputElement).checked);
+    $<HTMLInputElement>(panel, '#dev').onchange = (e) => {
+      deviate = (e.target as HTMLInputElement).checked;
+      save('deviate', deviate);
+    };
     panel.querySelector<HTMLElement>('#again')?.addEventListener('click', startPractice);
     panel.querySelector<HTMLElement>('#study2')?.addEventListener('click', () => {
       stage = 'study';
@@ -675,6 +686,11 @@ export function mount(root: HTMLElement): () => void {
   }
 
   function showPracticeHint() {
+    if (pFree) {
+      if (pFree.best) pHint = { from: pFree.best.slice(0, 2), to: pFree.best.slice(2, 4) };
+      refresh();
+      return;
+    }
     const kids = kidsNow();
     const main = kids.find((k) => k.main) ?? kids[0];
     if (!main) return;
@@ -685,13 +701,22 @@ export function mount(root: HTMLElement): () => void {
   }
 
   function stepPractice() {
-    if (!practiceActive || !course) return;
+    if (!practiceActive || !course || pFree) return;
     const kids = kidsNow();
     if (!kids.length) return finishPractice();
     if (chess.turn() === course.side[0]) {
       refresh();
       return;
     }
+    // soms speelt de tegenstander geen theorie
+    if (deviate && !pDeviated && chess.history().length <= 8 && Math.random() < 0.3) {
+      void tryDeviate(kids);
+      return;
+    }
+    playBookReply(kids);
+  }
+
+  function playBookReply(kids: TNode[]) {
     // tegenstander: hoofdlijn weegt zwaarder
     const weights = kids.map((k) => (k.main ? 3 : 1));
     let r = Math.random() * weights.reduce((a, b) => a + b, 0);
@@ -720,7 +745,135 @@ export function mount(root: HTMLElement): () => void {
     }, 650);
   }
 
+  /** Een speelbare zet buiten de theorie kiezen met de engine. */
+  async function tryDeviate(kids: TNode[]) {
+    const fen = chess.fen();
+    const white = chess.turn() === 'w';
+    const lines = await liveEngine().analyse(fen, { depth: 10, multipv: 8 });
+    if (disposed || !practiceActive || fen !== chess.fen()) return;
+    const bookSans = new Set(kids.map((k) => k.san));
+    const top = lines[0];
+    const cands = lines.filter((l) => {
+      if (!top || l.mate != null || top.mate != null) return false;
+      const san = uciToSan(fen, l.pv[0]);
+      const diff = ((top.cp ?? 0) - (l.cp ?? 0)) * (white ? 1 : -1);
+      return !!san && !bookSans.has(san) && diff <= 70;
+    });
+    if (!cands.length) return playBookReply(kids);
+    const pick = cands[Math.floor(Math.random() * cands.length)].pv[0];
+    const mainKid = kids.find((k) => k.main) ?? kids[0];
+    const san = uciToSan(fen, pick)!;
+    timer = window.setTimeout(() => {
+      if (disposed || !practiceActive) return;
+      chess.move({ from: pick.slice(0, 2), to: pick.slice(2, 4), promotion: pick[4] });
+      hist = chess.history();
+      pHint = null;
+      pDeviated = true;
+      pFree = { left: 4, fails: 0, busy: false, best: null };
+      const num = `${Math.ceil(chess.history().length / 2)}${chess.history().length % 2 === 1 ? '.' : '...'}${san}`;
+      pOpp = `<div class="explain theirs"><div class="who">Tegenstander<span class="mvtag">${esc(num)}</span></div>
+        <p class="tagline">Buiten de theorie</p>
+        <p>Je tegenstander speelt ${esc(san)}${mainKid ? ` in plaats van ${esc(mainKid.san)}` : ''}. Dat is geen theoriezet van deze opening, maar het is wel speelbaar.
+        Denk aan de basis: pak het centrum, ontwikkel je stukken en zet je koning veilig.</p></div>`;
+      pMine = '';
+      pErr = '';
+      refresh();
+      renderPractice();
+      void prepareFree();
+    }, 650);
+  }
+
+  async function prepareFree() {
+    if (!pFree) return;
+    const fen = chess.fen();
+    const l = (await liveEngine().analyse(fen, { depth: 12, multipv: 1 }))[0];
+    if (pFree && fen === chess.fen()) pFree.best = l?.pv[0] ?? null;
+  }
+
+  function whyGood(san: string, mv: { piece: string; captured?: string; from: string; flags: string }): string {
+    if (mv.flags.includes('k') || mv.flags.includes('q')) return 'Je zet je koning veilig en brengt je toren in het spel.';
+    if (mv.piece === 'p' && ['d4', 'e4', 'd5', 'e5'].some((x) => san.startsWith(x))) return 'Je pakt of betwist het centrum met een pion.';
+    if ((mv.piece === 'n' || mv.piece === 'b') && (mv.from[1] === '1' || mv.from[1] === '8')) return 'Je ontwikkelt een stuk naar een actief veld.';
+    if (mv.captured) return 'Je ruilt of wint materiaal, en je hebt op de gevolgen gelet.';
+    return 'Een sterke, logische voortzetting volgens de engine.';
+  }
+
+  async function freeMove(m: UserMove) {
+    const f = pFree;
+    if (!f || f.busy || !practiceActive || chess.turn() !== course!.side[0]) return;
+    const fen = chess.fen();
+    const test = new Chess(fen);
+    let mv;
+    try {
+      mv = test.move(m);
+    } catch {
+      refresh();
+      return;
+    }
+    const uci = m.from + m.to + (m.promotion ?? '');
+    f.busy = true;
+    const ok = f.best ? await sameStrength(fen, f.best, uci, 6) : true;
+    f.busy = false;
+    if (disposed || !practiceActive || fen !== chess.fen()) return;
+    if (!ok) {
+      pTotal++;
+      f.fails++;
+      board?.shake();
+      pErr = `<div class="explain bad"><div class="who">Dat is niet de beste reactie</div><p>De engine vindt hier een sterkere zet. Denk aan centrum, ontwikkeling en rokade.${f.fails >= 2 ? ' De pijl laat de zet zien.' : ''}</p></div>`;
+      if (f.fails >= 2) showPracticeHint();
+      renderPractice();
+      refresh();
+      return;
+    }
+    chess.move(m);
+    hist = chess.history();
+    pHint = null;
+    f.fails = 0;
+    f.left--;
+    pErr = '';
+    pOpp = '';
+    pMine = `<div class="explain mine"><div class="who"><span class="okmark">${icon('check-circle')}</span> Goede reactie<span class="mvtag">${esc(mv.san)}</span></div><p>${esc(whyGood(mv.san, mv))}</p></div>`;
+    refresh();
+    renderPractice();
+    if (f.left <= 0 || chess.isGameOver()) return finishFree();
+    // de engine speelt terug
+    f.busy = true;
+    const l = (await liveEngine().analyse(chess.fen(), { depth: 10, multipv: 1 }))[0];
+    f.busy = false;
+    if (disposed || !practiceActive || !l) return finishFree();
+    const san = uciToSan(chess.fen(), l.pv[0]);
+    chess.move({ from: l.pv[0].slice(0, 2), to: l.pv[0].slice(2, 4), promotion: l.pv[0][4] });
+    hist = chess.history();
+    pOpp = `<div class="explain theirs"><div class="who">Tegenstander<span class="mvtag">${esc(san ?? l.pv[0])}</span></div><p class="muted small">Jij bent aan zet.</p></div>`;
+    refresh();
+    renderPractice();
+    if (chess.isGameOver()) return finishFree();
+    void prepareFree();
+  }
+
+  function finishFree() {
+    practiceActive = false;
+    pHint = null;
+    const c = course!;
+    const all = stats();
+    const s = (all[c.id] ??= { runs: 0, clean: 0 });
+    s.runs++;
+    if (pTotal === 0) s.clean++;
+    save('courseStats', all);
+    pFree = null;
+    pErr = '';
+    pOpp = '';
+    pMine = `<div class="explain mine"><div class="who"><span class="okmark">${icon('check-circle')}</span> Afwijking afgehandeld</div>
+      <p>Je speelde vier zetten lang goed tegen een zet buiten de theorie. ${pTotal === 0 ? 'Zonder een enkele fout.' : `Je maakte ${pTotal} fout${pTotal === 1 ? '' : 'en'}.`} Houd je aan de principes als de theorie ophoudt.</p></div>`;
+    refresh();
+    renderPractice(true);
+  }
+
   function practiceMove(m: UserMove) {
+    if (pFree) {
+      void freeMove(m);
+      return;
+    }
     if (!practiceActive || !course || chess.turn() !== course.side[0]) return;
     const kids = kidsNow();
     const test = new Chess(chess.fen());
