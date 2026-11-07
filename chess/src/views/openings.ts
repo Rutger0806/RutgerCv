@@ -4,6 +4,7 @@ import { bookMoves, loadBook, type Book, type Opening } from '../book';
 import { COURSES, LEVEL, buildTree, type Course, type TNode } from '../courses';
 import { repertoire, saveRepertoire, type RepLine } from '../store';
 import { liveEngine, sameStrength } from '../engine';
+import { miniBoard } from '../mini';
 import { $, esc, fenKey, load, save, uciToSan } from '../util';
 
 type Mode = 'learn' | 'explore' | 'rep';
@@ -37,22 +38,6 @@ function buildRepTree(lines: { san: string[] }[]): Map<string, Map<string, TreeM
     }
   }
   return tree;
-}
-
-const GLYPH: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
-
-/** Klein voorbeeldbord (puur HTML) voor op de kaarten. */
-function miniBoard(fen: string, flip: boolean): string {
-  const rows = fen.split(' ')[0].split('/');
-  const cells: string[] = [];
-  for (const r of rows) {
-    for (const ch of r) {
-      if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) cells.push('');
-      else cells.push(`<i class="${ch === ch.toLowerCase() ? 'b' : 'w'}">${GLYPH[ch.toLowerCase()]}</i>`);
-    }
-  }
-  const ordered = flip ? cells.reverse() : cells;
-  return `<div class="mini">${ordered.map((c) => `<span>${c}</span>`).join('')}</div>`;
 }
 
 const thumbCache = new Map<string, string>();

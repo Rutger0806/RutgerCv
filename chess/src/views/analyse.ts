@@ -31,6 +31,7 @@ export function mount(root: HTMLElement): () => void {
         <button data-a="flip" title="Draai bord (f)"><i class="ph ph-arrows-down-up"></i></button>
         <button data-a="explore" title="Probeer eigen zetten vanaf deze stelling"><i class="ph ph-pencil-simple"></i> Probeer zetten</button>
       </div>
+      <p class="muted small hint-tip">Tip: sleep een stuk op het bord om te zien wat er was gebeurd met een andere zet.</p>
       <div class="comment" id="comment">Laad een partij om te beginnen.</div>
       <div class="players" id="players"></div>
     </div>
@@ -94,6 +95,8 @@ export function mount(root: HTMLElement): () => void {
   let ply = 0;
   let orient: 'white' | 'black' = 'white';
   let explore: string[] | null = null; // stapel van fens in probeer-modus
+  let exploreSans: string[] = [];
+  let exploreBase = 0;
   let token = 0;
   let disposed = false;
   let liveEv: Ev | null = null;
@@ -366,7 +369,8 @@ export function mount(root: HTMLElement): () => void {
     let comment = '';
     let badge: { sq: string; text: string; color: string } | null = null;
     if (explore) {
-      comment = 'Probeer-modus: verzet stukken om varianten te testen. <button class="link" id="back">Terug naar de partij</button>';
+      comment = `<b>Variant vanaf zet ${exploreBase}</b> <span class="muted">${exploreSans.length ? esc(numbered(exploreSans, explore[0])) : 'Verzet een stuk om te zien wat er dan gebeurt.'}</span>
+        <div class="vbtns"><button class="link" id="undoV" ${exploreSans.length ? '' : 'disabled'}>Zet terug</button><button class="link" id="back">Terug naar de partij</button></div>`;
     } else if (game && m) {
       const n = Math.ceil(ply / 2);
       const label = `${n}${m.color === 'w' ? '.' : '...'} ${m.san}`;
@@ -385,6 +389,7 @@ export function mount(root: HTMLElement): () => void {
       explore = null;
       update();
     });
+    $(el.comment, '#undoV')?.addEventListener('click', () => undoVariant());
     if (retry != null && game) {
       const rm = game.moves[retry - 1];
       const prev = retry > 1 ? game.moves[retry - 2] : null;
@@ -397,7 +402,7 @@ export function mount(root: HTMLElement): () => void {
       board.show(fen, {
         orientation: orient,
         lastMove: m ? [m.from, m.to] : null,
-        movable: explore ? 'both' : null,
+        movable: explore || game ? 'both' : null,
         arrows,
         badge: explore ? null : badge,
       });
@@ -469,6 +474,10 @@ export function mount(root: HTMLElement): () => void {
     if (!lines.length) return;
     liveEv = lineToEv(lines[0]);
     drawBar();
+    if (explore && lines[0].pv[0]) {
+      const u = lines[0].pv[0];
+      board.setArrows([{ from: u.slice(0, 2), to: u.slice(2, 4), color: 'green' }]);
+    }
     el.engine.innerHTML = lines
       .map(
         (l) => `<div class="pvline"><span class="pvev">${fmtEval(l.cp, l.mate)}</span><span class="pvmoves">${esc(pvToSan(fen, l.pv, 9))}</span><span class="muted">d${l.depth}</span></div>`,
@@ -504,18 +513,51 @@ export function mount(root: HTMLElement): () => void {
       }
       return;
     }
-    if (!explore) return;
+    if (!explore) {
+      if (!game) return;
+      enterExplore();
+    }
     const c = new Chess(curFen());
+    let played;
     try {
-      c.move(m);
+      played = c.move(m);
     } catch {
       update();
       return;
     }
-    explore.push(c.fen());
-    board.show(c.fen(), { lastMove: [m.from, m.to], movable: 'both' });
-    drawBar();
-    startLive();
+    explore!.push(c.fen());
+    exploreSans.push(played.san);
+    update();
+  }
+
+  function enterExplore() {
+    explore = [curFen()];
+    exploreSans = [];
+    exploreBase = ply;
+  }
+
+  function undoVariant() {
+    if (!explore) return;
+    if (explore.length > 1) {
+      explore.pop();
+      exploreSans.pop();
+    } else explore = null;
+    update();
+  }
+
+  /** "6.Bxf7+ Ke7 7.Nd5#" vanaf een beginstelling. */
+  function numbered(sans: string[], fen0: string): string {
+    const c = new Chess(fen0);
+    let n = c.moveNumber();
+    let white = c.turn() === 'w';
+    return sans
+      .map((s, i) => {
+        const out = white ? `${n}.${s}` : i === 0 ? `${n}...${s}` : s;
+        if (!white) n++;
+        white = !white;
+        return out;
+      })
+      .join(' ');
   }
 
   /* ---------- coach ---------- */
@@ -692,14 +734,14 @@ export function mount(root: HTMLElement): () => void {
     if (!a) return;
     if (a === 'start') goto(0);
     else if (a === 'end') goto(game?.moves.length ?? 0);
-    else if (a === 'prev') (explore && explore.length > 1 ? (explore.pop(), update()) : goto(ply - 1));
+    else if (a === 'prev') (explore ? undoVariant() : goto(ply - 1));
     else if (a === 'next') goto(ply + 1);
     else if (a === 'flip') {
       orient = orient === 'white' ? 'black' : 'white';
       board.flip();
       drawBar();
     } else if (a === 'explore') {
-      explore = [curFen()];
+      enterExplore();
       update();
     }
   });
@@ -724,6 +766,13 @@ export function mount(root: HTMLElement): () => void {
     save('openGame', null);
     const g = savedGames().find((x) => x.id === wanted);
     if (g) openPgn(g.pgn, g);
+    const wp = load<number | null>('openPly', null);
+    if (wp != null) {
+      save('openPly', null);
+      goto(wp);
+      showBest = true;
+      update();
+    }
   }
   board.show(new Chess().fen(), { orientation: 'white', movable: null });
   startLive();

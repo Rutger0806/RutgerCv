@@ -1,4 +1,6 @@
-import { analyseGame, parseGame, summarize, type GameAnalysis, type ParsedGame } from '../analysis';
+import { analyseGame, parseGame, summarize, CLS_INFO, type GameAnalysis, type ParsedGame } from '../analysis';
+import { coach } from '../coach';
+import { miniBoard } from '../mini';
 import { batchEngine } from '../engine';
 import { loadBook, type Book } from '../book';
 import { addPuzzles, hash, repertoire, savedGames, saveGames, saveRepertoire, saveSettings, settings } from '../store';
@@ -25,6 +27,8 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+const icon = (n: string) => `<i class="ph ph-${n}"></i>`;
 
 const go = (tab: string) => {
   location.hash = tab;
@@ -230,6 +234,26 @@ export function mount(root: HTMLElement): () => void {
     const pname: Record<Phase, string> = { opening: 'Opening', middle: 'Middenspel', end: 'Eindspel' };
 
     const worst = (t: Theme) => THEMES[t].name;
+    const moveLabel = (is: Issue) => `${Math.ceil(is.ply / 2)}${is.ply % 2 === 1 ? '.' : '...'}${is.san}`;
+    const exView = (is: Issue) => {
+      const d = done[is.gameIdx];
+      const mv = d.parsed.moves[is.ply - 1];
+      const marks: Record<string, 'bad' | 'good'> = { [mv.from]: 'bad', [mv.to]: 'bad' };
+      if (is.best) {
+        marks[is.best.slice(0, 2)] = 'good';
+        marks[is.best.slice(2, 4)] = 'good';
+      }
+      const info = CLS_INFO[is.cls];
+      const why = coach(d.parsed, d.an, is.ply - 1, book!).html;
+      return `<div class="exrow">
+        <div class="exboard">${miniBoard(is.fen, d.game.color === 'b', marks)}</div>
+        <div class="extext">
+          <div><span class="mvtag">${esc(moveLabel(is))}</span> <span class="badge" style="background:${info.color}">${info.sym} ${info.label}</span> <span class="muted">tegen ${esc(d.game.opponent)}</span></div>
+          <p>${why}</p>
+          <p class="muted small"><span class="legend bad"></span> jouw zet <span class="legend good"></span> beter${is.bestSan ? `: ${esc(is.bestSan)}` : ''}</p>
+          <button class="link" data-open="${d.id}" data-ply="${is.ply}">Bekijk in de analyse en probeer zelf een andere zet</button>
+        </div></div>`;
+    };
     const plan: string[] = [];
     if (ranked[0]) plan.push(`<b>${worst(ranked[0].t)}</b> is je grootste lek vandaag. ${esc(THEMES[ranked[0].t].advice)} <button data-tag="${esc(worst(ranked[0].t))}">Oefen ${ranked[0].list.length} puzzel(s)</button>`);
     if (ranked[1]) plan.push(`Daarna: <b>${worst(ranked[1].t)}</b>. <button data-tag="${esc(worst(ranked[1].t))}">Oefen ${ranked[1].list.length} puzzel(s)</button>`);
@@ -261,7 +285,7 @@ export function mount(root: HTMLElement): () => void {
               .slice()
               .sort((a, b) => b.loss - a.loss)
               .slice(0, 3)
-              .map((is) => `<div class="ex">tegen ${esc(done[is.gameIdx].game.opponent)}, zet ${Math.ceil(is.ply / 2)}: <b>${esc(is.san)}</b>${is.bestSan ? ` (beter: <b>${esc(is.bestSan)}</b>)` : ''} <span class="muted">−${is.loss.toFixed(0)}%</span> <button class="link" data-open="${done[is.gameIdx].id}">bekijk</button></div>`)
+              .map(exView)
               .join('')}
             <button data-tag="${esc(worst(t))}">Oefen deze fouten (${list.length})</button>
           </div>`)
@@ -278,12 +302,27 @@ export function mount(root: HTMLElement): () => void {
             .join('')}</section>`
         : ''
     }
-    <section class="card"><h3>Partijen</h3><div class="gamelist">${done
+    <section class="card"><h3>Partijen en wat er misging</h3>${done
       .map((d, i) => {
         const a = d.game.color === 'w' ? d.an.acc.w : d.an.acc.b;
-        return `<button class="g ${d.game.result}" data-open="${d.id}"><b>${d.game.result === 'win' ? 'Winst' : d.game.result === 'loss' ? 'Verlies' : 'Remise'}</b> tegen ${esc(d.game.opponent)}, ${d.game.speed}, ${a.toFixed(0)}%, ${issues.filter((x) => x.gameIdx === i).length} fouten</button>`;
+        const list = issues.filter((x) => x.gameIdx === i);
+        const res = d.game.result === 'win' ? 'Winst' : d.game.result === 'loss' ? 'Verlies' : 'Remise';
+        return `<div class="gcard ${d.game.result}">
+          <div class="ghead"><div><b>${res}</b> tegen ${esc(d.game.opponent)} <span class="muted">${d.game.speed}, ${a.toFixed(0)}% nauwkeurig</span></div>
+            <button data-open="${d.id}">${icon('chart-line-up')} Open partij</button></div>
+          ${
+            list.length
+              ? list
+                  .map((is) => `<div class="irow"><span class="mvtag">${esc(moveLabel(is))}</span>
+                    <span class="badge" style="background:${CLS_INFO[is.cls].color}">${CLS_INFO[is.cls].sym}</span>
+                    <span class="muted">${esc(THEMES[is.theme].name)}${is.bestSan ? `, beter ${esc(is.bestSan)}` : ''}, -${is.loss.toFixed(0)}%</span>
+                    <button class="link" data-open="${d.id}" data-ply="${is.ply}">bekijk</button></div>`)
+                  .join('')
+              : '<p class="muted small">Geen fouten in deze partij.</p>'
+          }
+        </div>`;
       })
-      .join('')}</div></section>`;
+      .join('')}</section>`;
 
     report.querySelectorAll<HTMLElement>('[data-tag]').forEach((b) => {
       b.onclick = () => {
@@ -294,6 +333,7 @@ export function mount(root: HTMLElement): () => void {
     report.querySelectorAll<HTMLElement>('[data-open]').forEach((b) => {
       b.onclick = () => {
         save('openGame', b.dataset.open);
+        save('openPly', b.dataset.ply ? +b.dataset.ply : null);
         go('analyse');
       };
     });

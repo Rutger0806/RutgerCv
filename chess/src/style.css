@@ -355,3 +355,23 @@ label.inline { display: flex; gap: 9px; align-items: center; }
   .page-head .seg button { flex: 1; padding: 8px 6px; font-size: 14px; white-space: nowrap; }
 }
 .gamelist > button.g { justify-content: flex-start; }
+
+/* ---------- dagtraining: voorbeelden en partijen ---------- */
+.mini span.bad { background: rgba(224, 100, 93, 0.55); }
+.mini span.good { background: rgba(90, 185, 140, 0.6); }
+.exrow { display: flex; gap: 16px; align-items: flex-start; margin: 14px 0; padding: 14px; background: var(--surface-2); border-radius: var(--r-ctl); }
+.exboard { flex: none; width: 168px; }
+.extext { flex: 1; min-width: 0; }
+.extext p { margin: 8px 0; }
+.legend { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -2px; margin-right: 3px; }
+.legend.bad { background: rgba(224, 100, 93, 0.8); }
+.legend.good { background: rgba(90, 185, 140, 0.85); margin-left: 8px; }
+.gcard { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: var(--r-ctl); padding: 12px 14px; margin: 10px 0; }
+.gcard.win { border-left-color: var(--accent); }
+.gcard.loss { border-left-color: var(--danger); }
+.gcard.draw { border-left-color: var(--muted); }
+.ghead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.irow { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 4px 0; font-size: 14px; }
+.vbtns { display: flex; gap: 14px; margin-top: 4px; }
+.hint-tip { margin: -4px 0 10px; }
+@media (max-width: 600px) { .exrow { flex-direction: column; } .exboard { width: 100%; max-width: 260px; } }
