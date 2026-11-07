@@ -3,8 +3,8 @@ import { $, esc } from '../util';
 
 export function mount(root: HTMLElement): () => void {
   const s = settings();
-  root.innerHTML = `<div class="page"><section class="card">
-    <h3>Instellingen</h3>
+  root.innerHTML = `<div class="page"><div class="page-head"><h1>Instellingen</h1></div><section class="card">
+    <h3>Je accounts</h3>
     <label>Chess.com gebruikersnaam <input id="cc" value="${esc(s.chesscom)}" /></label>
     <label>Lichess gebruikersnaam <input id="li" value="${esc(s.lichess)}" /></label>
     <label>Standaard analysediepte <select id="dp">${[12, 14, 16, 18, 20].map((d) => `<option ${d === s.depth ? 'selected' : ''}>${d}</option>`).join('')}</select></label>

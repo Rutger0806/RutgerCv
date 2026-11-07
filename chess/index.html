@@ -3,21 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d0f12" />
   <title>Rutger Schaak</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%235ab98c'/><path d='M30 72h40l-4-30 10-14-14 6-12-14-12 14-14-6 10 14z' fill='%2306150d'/></svg>" />
 </head>
 <body>
-  <header class="top">
-    <div class="brand">♞ Rutger Schaak</div>
-    <nav id="nav">
-      <button data-tab="analyse">Analyse</button>
-      <button data-tab="day">Dagtraining</button>
-      <button data-tab="openings">Openingen</button>
-      <button data-tab="theory">Theorie &amp; puzzels</button>
-      <button data-tab="settings">Instellingen</button>
-    </nav>
-  </header>
-  <main id="view"></main>
+  <div class="app">
+    <aside class="side">
+      <a class="brand" href="#analyse"><span class="logo"><i class="ph-fill ph-crown"></i></span><span>Rutger Schaak</span></a>
+      <nav id="nav">
+        <button data-tab="analyse"><i class="ph ph-chart-line-up"></i><span>Analyse</span></button>
+        <button data-tab="day"><i class="ph ph-calendar-check"></i><span>Dagtraining</span></button>
+        <button data-tab="openings"><i class="ph ph-graduation-cap"></i><span>Openingen</span></button>
+        <button data-tab="theory"><i class="ph ph-puzzle-piece"></i><span>Puzzels</span></button>
+        <button data-tab="settings"><i class="ph ph-gear"></i><span>Instellingen</span></button>
+      </nav>
+    </aside>
+    <main id="view"></main>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

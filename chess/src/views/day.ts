@@ -33,9 +33,9 @@ const go = (tab: string) => {
 export function mount(root: HTMLElement): () => void {
   const cfg = settings();
   root.innerHTML = `<div class="page wide">
+    <div class="page-head"><div><h1>Dagtraining</h1>
+      <p class="lead">Kies een dag. Je partijen worden opgehaald en geanalyseerd, je meest gemaakte soort fouten komt boven en je krijgt daar oefeningen bij.</p></div></div>
     <section class="card">
-      <h3>Dagtraining</h3>
-      <p class="muted">Kies een dag. Ik haal je partijen op, analyseer ze, zoek je meest gemaakte soort fouten en maak daar oefeningen van.</p>
       <div class="row">
         <label>Dag <input type="date" id="date" value="${todayStr()}" style="width:auto" /></label>
         <label>Diepte <select id="depth">${[10, 12, 14, 16].map((d) => `<option ${d === 12 ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
@@ -81,7 +81,7 @@ export function mount(root: HTMLElement): () => void {
           const opp = white ? g.black : g.white;
           out.push({
             pgn: g.pgn,
-            label: `${g.white.username} – ${g.black.username}`,
+            label: `${g.white.username} vs ${g.black.username}`,
             color: white ? 'w' : 'b',
             result: mine.result === 'win' ? 'win' : ['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(mine.result) ? 'draw' : 'loss',
             speed: g.time_class,
@@ -102,7 +102,7 @@ export function mount(root: HTMLElement): () => void {
         const opp = (white ? g.players.black.user?.name : g.players.white.user?.name) ?? 'anoniem';
         out.push({
           pgn: g.pgn,
-          label: `${g.players.white.user?.name ?? 'anoniem'} – ${g.players.black.user?.name ?? 'anoniem'}`,
+          label: `${g.players.white.user?.name ?? 'anoniem'} vs ${g.players.black.user?.name ?? 'anoniem'}`,
           color: white ? 'w' : 'b',
           result: !g.winner ? 'draw' : (g.winner === 'white') === white ? 'win' : 'loss',
           speed: g.speed,
@@ -164,7 +164,7 @@ export function mount(root: HTMLElement): () => void {
           const list = savedGames().filter((x) => x.id !== id);
           list.unshift({
             id,
-            title: `${parsed.headers.White ?? '?'} – ${parsed.headers.Black ?? '?'}`,
+            title: `${parsed.headers.White ?? '?'} vs ${parsed.headers.Black ?? '?'}`,
             date: Date.now(),
             pgn: dg.pgn,
             evals: an.evals.map((e) => [e.cp, e.mate]),
@@ -177,7 +177,7 @@ export function mount(root: HTMLElement): () => void {
         done.push({ game: dg, parsed, an, id });
       }
       if (disposed) return;
-      prog.textContent = stop ? 'Gestopt — rapport van wat al klaar is.' : '';
+      prog.textContent = stop ? 'Gestopt. Rapport van wat al klaar is.' : '';
       if (done.length) renderReport(date, done);
       else prog.textContent = 'Geen analyseerbare partijen.';
     } catch (e) {
@@ -231,12 +231,12 @@ export function mount(root: HTMLElement): () => void {
 
     const worst = (t: Theme) => THEMES[t].name;
     const plan: string[] = [];
-    if (ranked[0]) plan.push(`<b>${THEMES[ranked[0].t].icon} ${worst(ranked[0].t)}</b> is je grootste lek vandaag. ${esc(THEMES[ranked[0].t].advice)} <button data-tag="${esc(worst(ranked[0].t))}">Oefen ${ranked[0].list.length} puzzel(s)</button>`);
-    if (ranked[1]) plan.push(`Daarna: <b>${THEMES[ranked[1].t].icon} ${worst(ranked[1].t)}</b>. <button data-tag="${esc(worst(ranked[1].t))}">Oefen ${ranked[1].list.length} puzzel(s)</button>`);
-    if (leaks.length) plan.push(`Herhaal de openinglijnen waar je uit de theorie ging (zie hieronder) — één minuut per lijn.`);
+    if (ranked[0]) plan.push(`<b>${worst(ranked[0].t)}</b> is je grootste lek vandaag. ${esc(THEMES[ranked[0].t].advice)} <button data-tag="${esc(worst(ranked[0].t))}">Oefen ${ranked[0].list.length} puzzel(s)</button>`);
+    if (ranked[1]) plan.push(`Daarna: <b>${worst(ranked[1].t)}</b>. <button data-tag="${esc(worst(ranked[1].t))}">Oefen ${ranked[1].list.length} puzzel(s)</button>`);
+    if (leaks.length) plan.push(`Herhaal de openinglijnen waar je uit de theorie ging (zie hieronder), één minuut per lijn.`);
     if (phases.end >= 2) plan.push(`Je maakte ${phases.end} fouten in het eindspel. <button id="endBtn">Oefen eindspelen</button>`);
     if (issues.length) plan.push(`Sluit af met alle ${issues.length} fouten van vandaag. <button class="primary" data-tag="${esc(dayTag)}">Start dagpuzzels</button>`);
-    if (!issues.length) plan.push('Geen noemenswaardige fouten — sterke dag! Probeer morgen een lastiger tempo of oefen openingen.');
+    if (!issues.length) plan.push('Geen noemenswaardige fouten, sterke dag! Probeer morgen een lastiger tempo of oefen openingen.');
 
     report.innerHTML = `
     <section class="card">
@@ -255,7 +255,7 @@ export function mount(root: HTMLElement): () => void {
         ? `<section class="card"><h3>Meest gemaakte fouten</h3>${ranked
             .map(({ t, list, total }) => `
           <div class="theme">
-            <div class="thead"><span class="ticon">${THEMES[t].icon}</span><b>${worst(t)}</b><span class="muted">${list.length}× · gem. −${(total / list.length).toFixed(0)}% winkans</span></div>
+            <div class="thead"><span class="ticon"><i class="ph ph-${THEMES[t].icon}"></i></span><b>${worst(t)}</b><span class="muted">${list.length}×, gem. −${(total / list.length).toFixed(0)}% winkans</span></div>
             <p class="muted">${esc(THEMES[t].advice)}</p>
             ${list
               .slice()
@@ -281,7 +281,7 @@ export function mount(root: HTMLElement): () => void {
     <section class="card"><h3>Partijen</h3><div class="gamelist">${done
       .map((d, i) => {
         const a = d.game.color === 'w' ? d.an.acc.w : d.an.acc.b;
-        return `<button class="g ${d.game.result}" data-open="${d.id}"><b>${d.game.result === 'win' ? 'Winst' : d.game.result === 'loss' ? 'Verlies' : 'Remise'}</b> tegen ${esc(d.game.opponent)} · ${d.game.speed} · ${a.toFixed(0)}% · ${issues.filter((x) => x.gameIdx === i).length} fouten</button>`;
+        return `<button class="g ${d.game.result}" data-open="${d.id}"><b>${d.game.result === 'win' ? 'Winst' : d.game.result === 'loss' ? 'Verlies' : 'Remise'}</b> tegen ${esc(d.game.opponent)}, ${d.game.speed}, ${a.toFixed(0)}%, ${issues.filter((x) => x.gameIdx === i).length} fouten</button>`;
       })
       .join('')}</div></section>`;
 
@@ -302,7 +302,7 @@ export function mount(root: HTMLElement): () => void {
         const l = leaks[+b.dataset.leak!];
         const rep = repertoire();
         const id = `${l.side}:${l.line.join(' ')}`;
-        if (!rep.some((r) => r.id === id)) rep.push({ id, eco: '—', name: `${l.openingName} (dagtraining)`, san: l.line, side: l.side });
+        if (!rep.some((r) => r.id === id)) rep.push({ id, eco: '', name: `${l.openingName} (dagtraining)`, san: l.line, side: l.side });
         saveRepertoire(rep);
         save('openingsStart', id);
         go('openings');

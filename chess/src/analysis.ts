@@ -8,7 +8,7 @@ export type Cls = 'brilliant' | 'great' | 'book' | 'best' | 'excellent' | 'good'
 export const CLS_INFO: Record<Cls, { label: string; sym: string; mark: string; color: string }> = {
   brilliant: { label: 'Briljant', sym: '!!', mark: '!!', color: '#1baca6' },
   great: { label: 'Geweldig', sym: '!', mark: '!', color: '#5c8bb0' },
-  book: { label: 'Theorie', sym: '📖', mark: '📖', color: '#a88865' },
+  book: { label: 'Theorie', sym: 'B', mark: 'B', color: '#a88865' },
   best: { label: 'Beste', sym: '★', mark: '★', color: '#7fa650' },
   excellent: { label: 'Uitstekend', sym: '✓', mark: '✓', color: '#96bc4b' },
   good: { label: 'Goed', sym: '•', mark: '✓', color: '#9aa4ad' },

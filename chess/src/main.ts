@@ -1,3 +1,7 @@
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import '@phosphor-icons/web/regular';
+import '@phosphor-icons/web/fill';
 import './style.css';
 import { $ } from './util';
 
@@ -27,7 +31,7 @@ async function go(tab: string) {
 }
 
 $(document, '#nav').addEventListener('click', (e) => {
-  const t = (e.target as HTMLElement).dataset.tab;
+  const t = (e.target as HTMLElement).closest('button')?.dataset.tab;
   if (t) location.hash = t;
 });
 window.addEventListener('hashchange', () => void go(location.hash.slice(1)));

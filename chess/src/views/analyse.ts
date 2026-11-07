@@ -16,6 +16,7 @@ interface ListedGame {
 
 export function mount(root: HTMLElement): () => void {
   root.innerHTML = `
+  <div class="page-head compact"><h1>Analyse</h1></div>
   <div class="layout">
     <div class="left">
       <div class="boardrow">
@@ -23,12 +24,12 @@ export function mount(root: HTMLElement): () => void {
         <div class="board"></div>
       </div>
       <div class="controls">
-        <button data-a="start" title="Begin">⏮</button>
-        <button data-a="prev" title="Vorige (←)">◀</button>
-        <button data-a="next" title="Volgende (→)">▶</button>
-        <button data-a="end" title="Einde">⏭</button>
-        <button data-a="flip" title="Draai bord (f)">⇅</button>
-        <button data-a="explore" title="Probeer eigen zetten vanaf deze stelling">✎ Probeer zetten</button>
+        <button data-a="start" title="Begin"><i class="ph ph-skip-back"></i></button>
+        <button data-a="prev" title="Vorige (pijl links)"><i class="ph ph-caret-left"></i></button>
+        <button data-a="next" title="Volgende (pijl rechts)"><i class="ph ph-caret-right"></i></button>
+        <button data-a="end" title="Einde"><i class="ph ph-skip-forward"></i></button>
+        <button data-a="flip" title="Draai bord (f)"><i class="ph ph-arrows-down-up"></i></button>
+        <button data-a="explore" title="Probeer eigen zetten vanaf deze stelling"><i class="ph ph-pencil-simple"></i> Probeer zetten</button>
       </div>
       <div class="comment" id="comment">Laad een partij om te beginnen.</div>
       <div class="players" id="players"></div>
@@ -44,12 +45,12 @@ export function mount(root: HTMLElement): () => void {
         <div id="srcBody"></div>
       </section>
       <section class="card coach" id="coach" hidden>
-        <div class="coachrow"><div class="avatar">♞</div><div class="bubble" id="bubble"></div></div>
+        <div class="coachrow"><div class="avatar"><i class="ph-fill ph-graduation-cap"></i></div><div class="bubble" id="bubble"></div></div>
         <div class="row" id="coachBtns">
-          <button data-c="prevkey">◀ Vorig moment</button>
-          <button data-c="nextkey" class="primary">Volgend moment ▶</button>
-          <button data-c="best" id="bBest">💡 Toon beste zet</button>
-          <button data-c="retry" id="bRetry">↻ Probeer opnieuw</button>
+          <button data-c="prevkey"><i class="ph ph-caret-left"></i> Vorig moment</button>
+          <button data-c="nextkey" class="primary">Volgend moment <i class="ph ph-caret-right"></i></button>
+          <button data-c="best" id="bBest"><i class="ph ph-lightbulb"></i> Toon beste zet</button>
+          <button data-c="retry" id="bRetry"><i class="ph ph-arrow-counter-clockwise"></i> Probeer opnieuw</button>
         </div>
         <label class="inline small"><input type="checkbox" id="both" /> Ook zetten van de tegenstander</label>
       </section>
@@ -144,7 +145,7 @@ export function mount(root: HTMLElement): () => void {
       const sg = savedGames();
       el.srcBody.innerHTML = sg.length
         ? `<div class="gamelist">${sg
-            .map((g) => `<button data-id="${g.id}"><b>${esc(g.title)}</b><span>${new Date(g.date).toLocaleDateString('nl-NL')} · diepte ${g.depth}</span></button>`)
+            .map((g) => `<button data-id="${g.id}"><b>${esc(g.title)}</b><span>${new Date(g.date).toLocaleDateString('nl-NL')}, diepte ${g.depth}</span></button>`)
             .join('')}</div>`
         : '<p class="muted">Nog geen opgeslagen analyses. Elke geanalyseerde partij wordt automatisch bewaard.</p>';
       el.srcBody.querySelectorAll<HTMLElement>('[data-id]').forEach((b) => {
@@ -208,7 +209,7 @@ export function mount(root: HTMLElement): () => void {
             const mine = g.white.username.toLowerCase() === name ? g.white : g.black;
             const res = mine.result === 'win' ? 'win' : ['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(mine.result) ? 'draw' : 'loss';
             listed.push({
-              label: `${g.white.username} (${g.white.rating}) – ${g.black.username} (${g.black.rating}) · ${g.time_class} · ${new Date(g.end_time * 1000).toLocaleDateString('nl-NL')}`,
+              label: `${g.white.username} (${g.white.rating}) vs ${g.black.username} (${g.black.rating}), ${g.time_class}, ${new Date(g.end_time * 1000).toLocaleDateString('nl-NL')}`,
               pgn: g.pgn,
               res,
               speed: g.time_class,
@@ -232,7 +233,7 @@ export function mount(root: HTMLElement): () => void {
           const iAmWhite = wn.toLowerCase() === user.toLowerCase();
           const res = !g.winner ? 'draw' : (g.winner === 'white') === iAmWhite ? 'win' : 'loss';
           listed.push({
-            label: `${wn} – ${g.players.black.user?.name ?? 'anoniem'} · ${g.speed} · ${new Date(g.createdAt).toLocaleDateString('nl-NL')}`,
+            label: `${wn} vs ${g.players.black.user?.name ?? 'anoniem'}, ${g.speed}, ${new Date(g.createdAt).toLocaleDateString('nl-NL')}`,
             pgn: g.pgn,
             res,
             speed: g.speed,
@@ -272,7 +273,7 @@ export function mount(root: HTMLElement): () => void {
     el.both.checked = !meColor;
     retry = null;
     showBest = false;
-    el.players.innerHTML = `<b>${esc(h.White ?? '?')}</b> ${h.WhiteElo ? `(${esc(h.WhiteElo)})` : ''} – <b>${esc(h.Black ?? '?')}</b> ${h.BlackElo ? `(${esc(h.BlackElo)})` : ''} · ${esc(h.Result ?? '*')}`;
+    el.players.innerHTML = `<b>${esc(h.White ?? '?')}</b> ${h.WhiteElo ? `(${esc(h.WhiteElo)})` : ''} vs <b>${esc(h.Black ?? '?')}</b> ${h.BlackElo ? `(${esc(h.BlackElo)})` : ''} <span class="muted">${esc(h.Result ?? '*')}</span>`;
     el.summary.hidden = true;
     el.graphCard.hidden = true;
     renderMoves();
@@ -321,7 +322,7 @@ export function mount(root: HTMLElement): () => void {
     const list = savedGames().filter((x) => x.id !== id);
     list.unshift({
       id,
-      title: `${g.headers.White ?? '?'} – ${g.headers.Black ?? '?'}`,
+      title: `${g.headers.White ?? '?'} vs ${g.headers.Black ?? '?'}`,
       date: Date.now(),
       pgn: pgnOf(g),
       evals: res.evals.map((e) => [e.cp, e.mate]),
@@ -495,10 +496,10 @@ export function mount(root: HTMLElement): () => void {
       if (disposed || retry == null) return;
       if (ok) {
         retryDone = true;
-        el.bubble.innerHTML = '<b>Goed!</b> 🎉 Dat is een sterke zet. Ga verder met “Volgend moment”.';
+        el.bubble.innerHTML = '<b>Goed!</b> Dat is een sterke zet. Ga verder met “Volgend moment”.';
       } else {
         board.shake();
-        el.bubble.innerHTML = 'Niet helemaal — probeer een andere zet, of laat de beste zet zien.';
+        el.bubble.innerHTML = 'Niet helemaal, probeer een andere zet, of laat de beste zet zien.';
         board.show(fen0, { orientation: orient, movable: game.moves[i].color === 'w' ? 'white' : 'black' });
       }
       return;
@@ -567,7 +568,7 @@ export function mount(root: HTMLElement): () => void {
     el.bubble.innerHTML = html;
     btn('#bBest').hidden = !canBest;
     btn('#bRetry').hidden = !(ply > 0 && !explore && retry == null && BAD.includes(an.cls[ply - 1]) && !!an.best[ply - 1]);
-    btn('#bBest').textContent = showBest ? 'Verberg beste zet' : '💡 Toon beste zet';
+    btn('#bBest').innerHTML = showBest ? 'Verberg beste zet' : '<i class="ph ph-lightbulb"></i> Toon beste zet';
   }
 
   el.coach.addEventListener('click', (e) => {
@@ -626,7 +627,7 @@ export function mount(root: HTMLElement): () => void {
           fen: game!.fens[i],
           moves: [an!.best[i]!],
           setup: false,
-          title: `${game!.headers.White} – ${game!.headers.Black}, zet ${Math.floor(i / 2) + 1}`,
+          title: `${game!.headers.White} vs ${game!.headers.Black}, zet ${Math.floor(i / 2) + 1}`,
           source: 'mistake' as const,
         }));
       const n = addPuzzles(items);

@@ -1,18 +1,20 @@
 import { Chess } from 'chess.js';
 import { Board, type UserMove } from '../board';
 import { bookMoves, loadBook, type Book, type Opening } from '../book';
+import { COURSES, LEVEL, buildTree, type Course, type TNode } from '../courses';
 import { repertoire, saveRepertoire, type RepLine } from '../store';
-import { $, esc, fenKey, START_FEN } from '../util';
-import { load, save } from '../util';
+import { $, esc, fenKey, load, save } from '../util';
 
-type Mode = 'explore' | 'practice' | 'rep';
+type Mode = 'learn' | 'explore' | 'rep';
+type Stage = 'intro' | 'study' | 'practice';
 
 interface TreeMove {
   san: string;
   weight: number;
 }
 
-function buildTree(lines: { san: string[] }[]): Map<string, Map<string, TreeMove>> {
+/* ---------- hulpjes ---------- */
+function buildRepTree(lines: { san: string[] }[]): Map<string, Map<string, TreeMove>> {
   const tree = new Map<string, Map<string, TreeMove>>();
   const c = new Chess();
   for (const l of lines) {
@@ -36,79 +38,157 @@ function buildTree(lines: { san: string[] }[]): Map<string, Map<string, TreeMove
   return tree;
 }
 
+const GLYPH: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+
+/** Klein voorbeeldbord (puur HTML) voor op de kaarten. */
+function miniBoard(fen: string, flip: boolean): string {
+  const rows = fen.split(' ')[0].split('/');
+  const cells: string[] = [];
+  for (const r of rows) {
+    for (const ch of r) {
+      if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) cells.push('');
+      else cells.push(`<i class="${ch === ch.toLowerCase() ? 'b' : 'w'}">${GLYPH[ch.toLowerCase()]}</i>`);
+    }
+  }
+  const ordered = flip ? cells.reverse() : cells;
+  return `<div class="mini">${ordered.map((c) => `<span>${c}</span>`).join('')}</div>`;
+}
+
+const thumbCache = new Map<string, string>();
+function thumbFen(c: Course): string {
+  let f = thumbCache.get(c.id);
+  if (!f) {
+    const g = new Chess();
+    c.line.slice(0, c.thumb).forEach((m) => g.move(typeof m === 'string' ? m : m[0]));
+    f = g.fen();
+    thumbCache.set(c.id, f);
+  }
+  return f;
+}
+
+const icon = (n: string) => `<i class="ph ph-${n}"></i>`;
+const stats = () => load<Record<string, { runs: number; clean: number }>>('courseStats', {});
+
 export function mount(root: HTMLElement): () => void {
   root.innerHTML = `
-  <div class="layout">
-    <div class="left">
-      <div class="boardrow"><div class="board"></div></div>
-      <div class="controls">
-        <button data-a="undo">◀ Terug</button>
-        <button data-a="reset">⟲ Begin</button>
-        <button data-a="flip">⇅ Draai</button>
-      </div>
-      <div class="comment" id="opname">Beginstelling</div>
-      <div class="trail muted" id="trail"></div>
+  <div class="page-head">
+    <div>
+      <h1>Openingen</h1>
+      <p class="lead">Leer een opening stap voor stap, snap waarom elke zet gespeeld wordt en oefen daarna tot je hem kent.</p>
     </div>
-    <div class="right">
-      <section class="card">
-        <div class="tabs" id="modeTabs">
-          <button data-m="explore" class="on">Verkennen</button>
-          <button data-m="practice">Oefenen</button>
-          <button data-m="rep">Repertoire</button>
-        </div>
-        <div id="panel"><p class="muted">Openingsboek laden…</p></div>
-      </section>
+    <div class="seg" id="modeTabs">
+      <button data-m="learn" class="on">${icon('graduation-cap')} Cursussen</button>
+      <button data-m="explore">${icon('compass')} Verkennen</button>
+      <button data-m="rep">${icon('books')} Repertoire</button>
     </div>
-  </div>`;
+  </div>
+  <div id="screen"></div>`;
 
-  const board = new Board($(root, '.board'), (m) => onUserMove(m));
-  const panel = $(root, '#panel');
-  const nameEl = $(root, '#opname');
-  const trailEl = $(root, '#trail');
+  const screen = $(root, '#screen');
+  let board: Board | null = null;
+  let panel: HTMLElement;
+  let nameEl: HTMLElement;
+  let trailEl: HTMLElement;
 
   let book: Book | null = null;
-  let mode: Mode = 'explore';
   let disposed = false;
+  let mode: Mode = 'learn';
+  let timer: number | undefined;
+
   const chess = new Chess();
-  let hist: string[] = []; // SAN van de huidige lijn
+  let hist: string[] = [];
   let orient: 'white' | 'black' = 'white';
 
-  // oefenen
-  let tree = new Map<string, Map<string, TreeMove>>();
-  let side: 'white' | 'black' = 'white';
+  // cursus
+  let cSide: 'white' | 'black' = 'black';
+  let cVs = 'all';
+  let course: Course | null = null;
+  let ctree: TNode | null = null;
+  let stage: Stage = 'intro';
+  let path: TNode[] = [];
+  let studyMistakes = 0;
+  let studyHint: { from: string; to: string } | null = null;
+  let showNotes = true;
   let practiceActive = false;
-  let mistakes = 0;
-  let totalMistakes = 0;
-  let timer: number | undefined;
-  let hintArrow: { from: string; to: string } | null = null;
-  let source = 'all-white';
-  let msg = '';
+  let pMistakes = 0;
+  let pTotal = 0;
+  let pIntro = '';
+  let pMine = '';
+  let pOpp = '';
+  let pErr = '';
+  let pHint: { from: string; to: string } | null = null;
+
+  // repertoire-oefenen (oude systeem)
+  let rtree = new Map<string, Map<string, TreeMove>>();
+  let rside: 'white' | 'black' = 'white';
+  let rActive = false;
+  let rMistakes = 0;
+  let rTotal = 0;
+  let rSource = 'all-white';
+  let rMsg = '';
+  let rHint: { from: string; to: string } | null = null;
 
   const startSrc = load<string | null>('openingsStart', null);
-  if (startSrc) save('openingsStart', null);
+  if (startSrc) {
+    save('openingsStart', null);
+    mode = 'rep';
+    rSource = startSrc;
+  }
+
   void loadBook().then((b) => {
     book = b;
-    renderPanel();
-    refresh();
-    if (startSrc) {
-      source = startSrc;
-      $(root, '[data-m=practice]').click();
-    }
+    if (disposed) return;
+    syncTabs();
+    renderMode();
   });
 
-  /* ---------- gemeenschappelijk ---------- */
+  /* ---------- gedeelde bordlogica ---------- */
   function replay(moves: string[]) {
     chess.reset();
-    const last = [];
     for (const s of moves) {
       try {
-        const m = chess.move(s);
-        last.push(m);
+        chess.move(s);
       } catch {
         break;
       }
     }
     hist = chess.history();
+  }
+
+  function ensureStage() {
+    if (board) return;
+    screen.innerHTML = `
+    <div class="layout">
+      <div class="left">
+        <div class="boardrow"><div class="board"></div></div>
+        <div class="controls" id="ctl">
+          <button data-a="undo" title="Een zet terug">${icon('caret-left')}</button>
+          <button data-a="reset" title="Opnieuw beginnen">${icon('arrow-counter-clockwise')}</button>
+          <button data-a="flip" title="Draai het bord">${icon('arrows-down-up')}</button>
+        </div>
+        <div class="comment" id="opname"></div>
+        <div class="trail muted" id="trail"></div>
+      </div>
+      <div class="right"><section class="card" id="panel"></section></div>
+    </div>`;
+    board = new Board($(screen, '.board'), (m) => onUserMove(m));
+    panel = $(screen, '#panel');
+    nameEl = $(screen, '#opname');
+    trailEl = $(screen, '#trail');
+    $(screen, '#ctl').addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest('button')?.dataset.a;
+      if (a === 'flip') {
+        orient = orient === 'white' ? 'black' : 'white';
+        board?.flip();
+      } else if (a === 'undo') undo();
+      else if (a === 'reset') restart();
+    });
+  }
+
+  function leaveStage() {
+    window.clearTimeout(timer);
+    board?.destroy();
+    board = null;
   }
 
   function openingName(): Opening | null {
@@ -122,59 +202,36 @@ export function mount(root: HTMLElement): () => void {
     return found;
   }
 
+  function movableNow(): 'white' | 'black' | 'both' | null {
+    if (mode === 'explore') return 'both';
+    if (mode === 'learn' && course) {
+      if (stage === 'study') return chess.turn() === course.side[0] ? course.side : null;
+      if (stage === 'practice') return practiceActive && chess.turn() === course.side[0] ? course.side : null;
+      return null;
+    }
+    if (mode === 'rep') return rActive && chess.turn() === rside[0] ? rside : null;
+    return null;
+  }
+
   function refresh() {
+    if (!board) return;
     const h = chess.history({ verbose: true });
     const last = h[h.length - 1];
-    const movable = mode === 'explore' ? 'both' : practiceActive && chess.turn() === side[0] ? side : null;
+    const hint = mode === 'learn' ? (stage === 'practice' ? pHint : studyHint) : rHint;
     board.show(chess.fen(), {
       orientation: orient,
       lastMove: last ? [last.from, last.to] : null,
-      movable,
-      arrows: hintArrow ? [hintArrow] : [],
+      movable: movableNow(),
+      arrows: hint ? [hint] : [],
     });
     const op = openingName();
-    nameEl.innerHTML = op ? `<b>${esc(op.name)}</b> <span class="muted">${op.eco}</span>` : hist.length ? '<span class="muted">Buiten de theorie</span>' : 'Beginstelling';
+    nameEl.innerHTML = op
+      ? `<b>${esc(op.name)}</b> <span class="muted">${op.eco}</span>`
+      : hist.length
+        ? '<span class="muted">Buiten de bekende theorie</span>'
+        : '<span class="muted">Beginstelling</span>';
     trailEl.textContent = h.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${m.san}` : m.san)).join(' ');
   }
-
-  root.querySelector('.controls')!.addEventListener('click', (e) => {
-    const a = (e.target as HTMLElement).dataset.a;
-    if (a === 'flip') {
-      orient = orient === 'white' ? 'black' : 'white';
-      board.flip();
-    } else if (a === 'undo' && mode === 'explore') {
-      replay(hist.slice(0, -1));
-      refresh();
-      renderPanel();
-    } else if (a === 'reset') {
-      if (mode === 'explore') {
-        replay([]);
-        refresh();
-        renderPanel();
-      } else if (mode === 'practice') startPractice();
-    }
-  });
-
-  $(root, '#modeTabs').addEventListener('click', (e) => {
-    const m = (e.target as HTMLElement).dataset.m as Mode | undefined;
-    if (!m) return;
-    window.clearTimeout(timer);
-    mode = m;
-    practiceActive = false;
-    hintArrow = null;
-    $(root, '#modeTabs')
-      .querySelectorAll('button')
-      .forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.m === m));
-    if (m !== 'practice') {
-      replay(m === 'explore' ? hist : []);
-    }
-    if (m === 'practice') {
-      replay([]);
-      msg = '';
-    }
-    renderPanel();
-    refresh();
-  });
 
   function onUserMove(m: UserMove) {
     if (mode === 'explore') {
@@ -186,37 +243,562 @@ export function mount(root: HTMLElement): () => void {
       }
       hist = chess.history();
       refresh();
-      renderPanel();
-    } else if (mode === 'practice') practiceMove(m);
+      renderExplore();
+    } else if (mode === 'learn') {
+      if (stage === 'study') studyMove(m);
+      else if (stage === 'practice') practiceMove(m);
+    } else if (mode === 'rep') repMove(m);
   }
 
-  function renderPanel() {
-    if (!book) return;
-    if (mode === 'explore') renderExplore();
-    else if (mode === 'practice') renderPractice();
-    else renderRep();
+  function undo() {
+    if (mode === 'explore') {
+      replay(hist.slice(0, -1));
+      refresh();
+      renderExplore();
+    } else if (mode === 'learn' && course && stage === 'study') {
+      back();
+    }
   }
 
-  /* ---------- verkennen ---------- */
+  function restart() {
+    if (mode === 'explore') {
+      replay([]);
+      refresh();
+      renderExplore();
+    } else if (mode === 'learn' && course) {
+      if (stage === 'study') {
+        path = [];
+        studyHint = null;
+        studyMistakes = 0;
+        replay([]);
+        refresh();
+        renderStudy();
+      } else if (stage === 'practice') startPractice();
+    } else if (mode === 'rep') startRepPractice();
+  }
+
+  /* ---------- tabbladen ---------- */
+  function syncTabs() {
+    $(root, '#modeTabs')
+      .querySelectorAll('button')
+      .forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.m === mode));
+  }
+
+  $(root, '#modeTabs').addEventListener('click', (e) => {
+    const m = (e.target as HTMLElement).closest('button')?.dataset.m as Mode | undefined;
+    if (!m || m === mode) return;
+    window.clearTimeout(timer);
+    practiceActive = false;
+    rActive = false;
+    mode = m;
+    syncTabs();
+    renderMode();
+  });
+
+  function renderMode() {
+    if (disposed) return;
+    window.clearTimeout(timer);
+    if (mode === 'learn') {
+      if (course) openCourse(course, stage === 'practice' ? 'practice' : stage);
+      else {
+        leaveStage();
+        renderCatalog();
+      }
+    } else {
+      if (!book) {
+        screen.innerHTML = '<p class="muted">Openingsboek laden...</p>';
+        return;
+      }
+      ensureStage();
+      if (mode === 'explore') {
+        orient = 'white';
+        replay(hist);
+        refresh();
+        renderExplore();
+      } else {
+        orient = 'white';
+        replay([]);
+        refresh();
+        renderRep();
+      }
+    }
+  }
+
+  /* =====================================================
+     CURSUSSEN
+     ===================================================== */
+  function renderCatalog() {
+    const st = stats();
+    const list = COURSES.filter((c) => c.side === cSide && (cVs === 'all' || c.vs === cVs || (cVs === 'other' && (c.vs === '1.c4' || c.vs === '1.Nf3'))));
+    const chipsBlack = [
+      ['all', 'Alles'],
+      ['1.e4', '1.e4'],
+      ['1.d4', '1.d4'],
+      ['other', '1.c4 / 1.Nf3'],
+    ];
+    const chipsWhite = [
+      ['all', 'Alles'],
+      ['1.e4', 'Ik open met 1.e4'],
+      ['1.d4', 'Ik open met 1.d4'],
+    ];
+    const chips = cSide === 'black' ? chipsBlack : chipsWhite;
+    screen.innerHTML = `
+    <div class="chooser">
+      <div class="choose-row">
+        <span class="choose-label">Ik speel met</span>
+        <div class="seg" id="sideSeg">
+          <button data-s="white" class="${cSide === 'white' ? 'on' : ''}"><span class="dot w"></span> Wit</button>
+          <button data-s="black" class="${cSide === 'black' ? 'on' : ''}"><span class="dot b"></span> Zwart</button>
+        </div>
+      </div>
+      <div class="choose-row">
+        <span class="choose-label">${cSide === 'black' ? 'Wit opent met' : 'Mijn eerste zet'}</span>
+        <div class="chips" id="vsChips">${chips.map(([v, l]) => `<button class="chip-btn ${cVs === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}</div>
+      </div>
+    </div>
+    <div class="cards">
+      ${list
+        .map((c, i) => {
+          const s = st[c.id];
+          return `<button class="course-card" style="--i:${i}" data-c="${c.id}">
+            <div class="thumb">${miniBoard(thumbFen(c), c.side === 'black')}</div>
+            <div class="cc-body">
+              <div class="cc-top"><span class="tag">${c.vs}</span><span class="level l${c.level}">${LEVEL[c.level]}</span></div>
+              <h3>${esc(c.name)}</h3>
+              <p>${esc(c.tagline)}</p>
+              <div class="cc-foot">${s?.runs ? `${icon('check-circle')} ${s.clean} foutloos van ${s.runs}` : `<span class="muted">Nog niet geoefend</span>`}</div>
+            </div>
+          </button>`;
+        })
+        .join('')}
+    </div>
+    ${list.length ? '' : '<p class="muted">Nog geen cursussen voor deze keuze.</p>'}`;
+    $(screen, '#sideSeg').addEventListener('click', (e) => {
+      const s = (e.target as HTMLElement).closest('button')?.dataset.s as 'white' | 'black' | undefined;
+      if (!s) return;
+      cSide = s;
+      cVs = 'all';
+      renderCatalog();
+    });
+    $(screen, '#vsChips').addEventListener('click', (e) => {
+      const v = (e.target as HTMLElement).closest('button')?.dataset.v;
+      if (!v) return;
+      cVs = v;
+      renderCatalog();
+    });
+    screen.querySelectorAll<HTMLElement>('[data-c]').forEach((b) => {
+      b.onclick = () => openCourse(COURSES.find((c) => c.id === b.dataset.c)!, 'intro');
+    });
+  }
+
+  function openCourse(c: Course, st: Stage) {
+    course = c;
+    ctree = buildTree(c);
+    stage = st;
+    path = [];
+    studyMistakes = 0;
+    studyHint = null;
+    practiceActive = false;
+    ensureStage();
+    orient = c.side;
+    replay([]);
+    refresh();
+    if (st === 'intro') renderIntro();
+    else if (st === 'study') renderStudy();
+    else startPractice();
+  }
+
+  const kidsNow = (): TNode[] => (path.length ? path[path.length - 1] : ctree!).kids;
+  const nodeNow = (): TNode => (path.length ? path[path.length - 1] : ctree!);
+
+  function exitCourse() {
+    course = null;
+    ctree = null;
+    path = [];
+    practiceActive = false;
+    window.clearTimeout(timer);
+    leaveStage();
+    renderCatalog();
+  }
+
+  function courseHead(sub: string): string {
+    const c = course!;
+    return `<div class="phead">
+      <button class="link-btn" id="allBack">${icon('caret-left')} Alle openingen</button>
+      <div class="seg small" id="stageSeg">
+        <button data-st="study" class="${stage !== 'practice' ? 'on' : ''}">${icon('book-open')} Uitleg</button>
+        <button data-st="practice" class="${stage === 'practice' ? 'on' : ''}">${icon('target')} Oefenen</button>
+      </div>
+    </div>
+    <h2 class="ctitle">${esc(c.name)}</h2>
+    <p class="muted">${sub}</p>`;
+  }
+
+  function wireHead() {
+    $(panel, '#allBack').onclick = exitCourse;
+    $(panel, '#stageSeg').addEventListener('click', (e) => {
+      const s = (e.target as HTMLElement).closest('button')?.dataset.st as Stage | undefined;
+      if (!s || !course) return;
+      window.clearTimeout(timer);
+      practiceActive = false;
+      stage = s;
+      if (s === 'study') {
+        path = [];
+        studyHint = null;
+        replay([]);
+        refresh();
+        renderStudy();
+      } else startPractice();
+    });
+  }
+
+  /* ---------- intro ---------- */
+  function renderIntro() {
+    const c = course!;
+    stage = 'intro';
+    panel.innerHTML = `
+      <div class="phead"><button class="link-btn" id="allBack">${icon('caret-left')} Alle openingen</button></div>
+      <div class="tags"><span class="tag">${c.vs}</span><span class="tag">ECO ${c.eco}</span><span class="level l${c.level}">${LEVEL[c.level]}</span>
+        <span class="tag">${c.side === 'white' ? 'Jij speelt wit' : 'Jij speelt zwart'}</span></div>
+      <h2 class="ctitle">${esc(c.name)}</h2>
+      <p class="lead2">${esc(c.tagline)}</p>
+      <h4>Het idee</h4>
+      <ul class="bul">${c.ideas.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+      <h4>Let op</h4>
+      <ul class="bul warn">${c.pitfalls.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+      <h4>Varianten die je leert</h4>
+      <ul class="bul">${c.branches.filter((b) => b.steps.length).map((b) => `<li>${esc(b.title)}</li>`).join('')}</ul>
+      <div class="actions">
+        <button class="primary" id="learn">${icon('book-open')} Begin met leren</button>
+        <button id="skip">Ik snap het, direct oefenen</button>
+      </div>`;
+    $(panel, '#allBack').onclick = exitCourse;
+    $(panel, '#learn').onclick = () => {
+      stage = 'study';
+      refresh();
+      renderStudy();
+    };
+    $(panel, '#skip').onclick = () => startPractice();
+  }
+
+  /* ---------- uitleg (study) ---------- */
+  function noteBlock(n: TNode | null): string {
+    if (!n) {
+      return `<div class="explain"><div class="who muted">Beginstelling</div><p>Je gaat de ${esc(course!.name)} leren. ${course!.side === 'white' ? 'Jij begint.' : 'Wit begint, jij antwoordt.'} Klik op de volgende zet of speel zelf de juiste zet op het bord.</p></div>`;
+    }
+    const num = Math.ceil(n.ply / 2);
+    const white = n.ply % 2 === 1;
+    const mine = (course!.side === 'white') === white;
+    const label = `${num}${white ? '.' : '...'} ${n.san}`;
+    return `<div class="explain ${mine ? 'mine' : 'theirs'}">
+      <div class="who">${mine ? 'Jouw zet' : 'Tegenstander'}<span class="mvtag">${esc(label)}</span></div>
+      <p>${esc(n.note ?? 'Een gangbare theoriezet.')}</p>
+    </div>`;
+  }
+
+  function branchPath(bi: number): TNode[] | null {
+    const c = course!;
+    const b = c.branches[bi];
+    if (!b.steps.length) return null;
+    const out: TNode[] = [];
+    let p = ctree!;
+    for (let i = 0; i < b.from; i++) {
+      p = p.kids.find((k) => k.main)!;
+      out.push(p);
+    }
+    const first = typeof b.steps[0] === 'string' ? b.steps[0] : b.steps[0][0];
+    const n = p.kids.find((k) => k.san === first);
+    if (!n) return null;
+    out.push(n);
+    return out;
+  }
+
+  function renderStudy() {
+    const c = course!;
+    stage = 'study';
+    const last = path.length ? path[path.length - 1] : null;
+    const kids = kidsNow();
+    const myTurn = chess.turn() === c.side[0];
+    const num = (n: TNode) => `${Math.ceil(n.ply / 2)}${n.ply % 2 === 1 ? '.' : '...'}${n.san}`;
+
+    let next = '';
+    if (!kids.length) {
+      next = `<div class="end"><b>Einde van deze lijn.</b> Bekijk hieronder een variant, of probeer het nu zelf.</div>`;
+    } else if (!myTurn) {
+      const ordered = [...kids].sort((a, b) => Number(b.main) - Number(a.main));
+      next = `<h4>Wat speelt je tegenstander?</h4>
+        <div class="opts">${ordered
+          .map((k) => `<button class="opt ${k.main ? 'main' : ''}" data-k="${kids.indexOf(k)}"><b>${esc(num(k))}</b><span>${k.main ? 'Meest gespeeld' : esc(k.label ?? 'Variant')}</span></button>`)
+          .join('')}</div>`;
+    } else {
+      next = `<h4>Jouw zet</h4>
+        <p class="muted">Speel de juiste zet op het bord, of laat hem zien.</p>
+        <div class="actions"><button class="primary" id="show">${icon('lightbulb')} Toon de zet</button></div>
+        ${studyMistakes ? `<p class="err small">Dat is niet de theoriezet${studyMistakes > 1 ? ', de pijl laat de zet zien' : ''}.</p>` : ''}`;
+    }
+
+    const variants = c.branches
+      .map((b, i) => ({ b, i }))
+      .filter(({ b }) => b.steps.length)
+      .map(({ b, i }) => `<button class="vitem" data-b="${i}">${icon('path')} <span>${esc(b.title)}</span></button>`)
+      .join('');
+
+    panel.innerHTML = `${courseHead(path.length ? `Zet ${path.length}` : 'Begin van de lijn')}
+      ${noteBlock(last)}
+      ${next}
+      <div class="nav2">
+        <button id="b" ${path.length ? '' : 'disabled'}>${icon('caret-left')} Terug</button>
+        ${kids.length && !myTurn ? `<button id="f">Hoofdzet ${icon('caret-right')}</button>` : ''}
+        <button class="grow" id="prac">${icon('target')} Ik snap het, oefenen</button>
+      </div>
+      ${variants ? `<h4>Varianten</h4><div class="vlist">${variants}</div>` : ''}`;
+    wireHead();
+    $(panel, '#b').onclick = back;
+    $(panel, '#prac').onclick = () => startPractice();
+    panel.querySelectorAll<HTMLElement>('[data-k]').forEach((b) => (b.onclick = () => playNode(kids[+b.dataset.k!])));
+    const f = panel.querySelector<HTMLElement>('#f');
+    if (f) f.onclick = () => playNode(kids.find((k) => k.main) ?? kids[0]);
+    const show = panel.querySelector<HTMLElement>('#show');
+    if (show) show.onclick = () => playNode(kids.find((k) => k.main) ?? kids[0]);
+    panel.querySelectorAll<HTMLElement>('[data-b]').forEach((b) => {
+      b.onclick = () => {
+        const p = branchPath(+b.dataset.b!);
+        if (!p) return;
+        path = p;
+        studyHint = null;
+        studyMistakes = 0;
+        replay(path.map((n) => n.san));
+        refresh();
+        renderStudy();
+      };
+    });
+  }
+
+  function playNode(n: TNode) {
+    try {
+      chess.move(n.san);
+    } catch {
+      return;
+    }
+    path.push(n);
+    hist = chess.history();
+    studyMistakes = 0;
+    studyHint = null;
+    refresh();
+    renderStudy();
+  }
+
+  function back() {
+    if (!path.length) return;
+    path.pop();
+    studyHint = null;
+    studyMistakes = 0;
+    replay(path.map((n) => n.san));
+    refresh();
+    renderStudy();
+  }
+
+  function studyMove(m: UserMove) {
+    const kids = kidsNow();
+    const test = new Chess(chess.fen());
+    let san: string;
+    try {
+      san = test.move(m).san;
+    } catch {
+      refresh();
+      return;
+    }
+    const k = kids.find((x) => x.san === san);
+    if (k) return playNode(k);
+    studyMistakes++;
+    board?.shake();
+    const main = kids.find((x) => x.main) ?? kids[0];
+    if (studyMistakes >= 2 && main) {
+      const g = new Chess(chess.fen());
+      const mv = g.move(main.san);
+      studyHint = { from: mv.from, to: mv.to };
+    }
+    refresh();
+    renderStudy();
+  }
+
+  /* ---------- oefenen (cursus) ---------- */
+  function startPractice() {
+    window.clearTimeout(timer);
+    const c = course!;
+    stage = 'practice';
+    path = [];
+    pMistakes = 0;
+    pTotal = 0;
+    pHint = null;
+    pIntro = `Jij speelt ${c.side === 'white' ? 'wit' : 'zwart'}. ${c.side === 'white' ? 'Begin met de juiste zet.' : 'Wit begint, wacht op zijn zet.'}`;
+    pMine = '';
+    pOpp = '';
+    pErr = '';
+    practiceActive = true;
+    orient = c.side;
+    replay([]);
+    refresh();
+    renderPractice();
+    stepPractice();
+  }
+
+  function renderPractice(done = false) {
+    const c = course!;
+    const st = stats()[c.id];
+    panel.innerHTML = `${courseHead('Oefenmodus: speel de juiste zetten uit je hoofd.')}
+      <label class="switch"><input type="checkbox" id="notes" ${showNotes ? 'checked' : ''}/><span>Uitleg tonen na elke zet</span></label>
+      <div class="feedback" id="fb">${pErr || pMine || pOpp ? `${pErr}${pErr ? '' : pMine}${pErr ? '' : pOpp}` : pIntro}</div>
+      ${
+        done
+          ? `<div class="actions"><button class="primary" id="again">${icon('arrow-counter-clockwise')} Nog een keer</button>
+              <button id="study2">${icon('book-open')} Terug naar uitleg</button></div>`
+          : `<div class="actions"><button id="hint" ${practiceActive ? '' : 'disabled'}>${icon('lightbulb')} Hint</button>
+              <button id="giveup" ${practiceActive ? '' : 'disabled'}>Toon de zet</button></div>`
+      }
+      <p class="muted small">${st?.runs ? `Tot nu toe: ${st.runs} rondes, ${st.clean} foutloos.` : 'Elke ronde kiest je tegenstander een andere variant.'}</p>`;
+    wireHead();
+    $<HTMLInputElement>(panel, '#notes').onchange = (e) => (showNotes = (e.target as HTMLInputElement).checked);
+    panel.querySelector<HTMLElement>('#again')?.addEventListener('click', startPractice);
+    panel.querySelector<HTMLElement>('#study2')?.addEventListener('click', () => {
+      stage = 'study';
+      path = [];
+      replay([]);
+      refresh();
+      renderStudy();
+    });
+    panel.querySelector<HTMLElement>('#hint')?.addEventListener('click', () => showPracticeHint());
+    panel.querySelector<HTMLElement>('#giveup')?.addEventListener('click', () => {
+      pTotal++;
+      showPracticeHint();
+    });
+  }
+
+  function showPracticeHint() {
+    const kids = kidsNow();
+    const main = kids.find((k) => k.main) ?? kids[0];
+    if (!main) return;
+    const g = new Chess(chess.fen());
+    const mv = g.move(main.san);
+    pHint = { from: mv.from, to: mv.to };
+    refresh();
+  }
+
+  function stepPractice() {
+    if (!practiceActive || !course) return;
+    const kids = kidsNow();
+    if (!kids.length) return finishPractice();
+    if (chess.turn() === course.side[0]) {
+      refresh();
+      return;
+    }
+    // tegenstander: hoofdlijn weegt zwaarder
+    const weights = kids.map((k) => (k.main ? 3 : 1));
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    let pick = kids[0];
+    for (let i = 0; i < kids.length; i++) {
+      r -= weights[i];
+      if (r <= 0) {
+        pick = kids[i];
+        break;
+      }
+    }
+    timer = window.setTimeout(() => {
+      if (disposed || !practiceActive) return;
+      chess.move(pick.san);
+      path.push(pick);
+      hist = chess.history();
+      pHint = null;
+      const num = `${Math.ceil(pick.ply / 2)}${pick.ply % 2 === 1 ? '.' : '...'}${pick.san}`;
+      pOpp = `<div class="explain theirs"><div class="who">Tegenstander<span class="mvtag">${esc(num)}</span></div>
+        ${pick.label ? `<p class="tagline">${esc(pick.label)}</p>` : ''}
+        ${showNotes && pick.note ? `<p>${esc(pick.note)}</p>` : ''}
+        <p class="muted small">Jij bent aan zet.</p></div>`;
+      refresh();
+      renderPractice();
+      stepPractice();
+    }, 650);
+  }
+
+  function practiceMove(m: UserMove) {
+    if (!practiceActive || !course || chess.turn() !== course.side[0]) return;
+    const kids = kidsNow();
+    const test = new Chess(chess.fen());
+    let san: string;
+    try {
+      san = test.move(m).san;
+    } catch {
+      refresh();
+      return;
+    }
+    const k = kids.find((x) => x.san === san);
+    if (k) {
+      chess.move(k.san);
+      path.push(k);
+      hist = chess.history();
+      pHint = null;
+      pMistakes = 0;
+      const num = `${Math.ceil(k.ply / 2)}${k.ply % 2 === 1 ? '.' : '...'}${k.san}`;
+      pErr = '';
+      pOpp = '';
+      pMine = `<div class="explain mine"><div class="who"><span class="okmark">${icon('check-circle')}</span> Goed<span class="mvtag">${esc(num)}</span></div>${showNotes && k.note ? `<p>${esc(k.note)}</p>` : ''}</div>`;
+      refresh();
+      renderPractice();
+      stepPractice();
+      return;
+    }
+    pTotal++;
+    pMistakes++;
+    board?.shake();
+    const main = kids.find((x) => x.main) ?? kids[0];
+    pErr = `<div class="explain bad"><div class="who">Niet de theoriezet</div><p>Probeer het nog eens${pMistakes === 2 ? '. De pijl laat de zet zien.' : '.'}</p>${
+      pMistakes >= 3 && main?.note ? `<p class="muted small">Denk hieraan: ${esc(main.note)}</p>` : ''
+    }</div>`;
+    if (pMistakes >= 2) showPracticeHint();
+    renderPractice();
+    refresh();
+  }
+
+  function finishPractice() {
+    practiceActive = false;
+    pHint = null;
+    const c = course!;
+    const all = stats();
+    const s = (all[c.id] ??= { runs: 0, clean: 0 });
+    s.runs++;
+    if (pTotal === 0) s.clean++;
+    save('courseStats', all);
+    const op = openingName();
+    pErr = '';
+    pOpp = '';
+    pMine = `<div class="explain mine"><div class="who"><span class="okmark">${icon('check-circle')}</span> Lijn afgerond</div>
+      <p>${op ? `<b>${esc(op.name)}</b>. ` : ''}${pTotal === 0 ? 'Zonder een enkele fout. Sterk.' : `Je maakte ${pTotal} fout${pTotal === 1 ? '' : 'en'}. Probeer nog een ronde.`}</p></div>`;
+    refresh();
+    renderPractice(true);
+  }
+
+  /* =====================================================
+     VERKENNEN
+     ===================================================== */
   let query = '';
   let repMsg = '';
 
   function renderExplore() {
     const moves = bookMoves(book!, chess.fen());
     const q = query.trim().toLowerCase();
-    const results = q
-      ? book!.list.filter((o) => q.split(/\s+/).every((w) => o.name.toLowerCase().includes(w) || o.eco.toLowerCase() === w)).slice(0, 80)
-      : [];
+    const results = q ? book!.list.filter((o) => q.split(/\s+/).every((w) => o.name.toLowerCase().includes(w) || o.eco.toLowerCase() === w)).slice(0, 80) : [];
     panel.innerHTML = `
-      <input id="q" placeholder="Zoek opening (bijv. Najdorf, Londen, Caro-Kann)…" value="${esc(query)}" />
+      <h2 class="ctitle">Verken de theorie</h2>
+      <p class="muted">Speel zetten op het bord of zoek een opening. Je ziet welke zetten in de boeken staan.</p>
+      <input id="q" class="search" placeholder="Zoek een opening, bijvoorbeeld Najdorf of Londen" value="${esc(query)}" />
       ${
         q
           ? `<div class="row small"><span class="muted">${results.length}${results.length === 80 ? '+' : ''} resultaten</span>
-             <button id="addAllW">+ alles als wit</button><button id="addAllB">+ alles als zwart</button></div>
+             <button id="addAllW">Alles aan wit toevoegen</button><button id="addAllB">Alles aan zwart toevoegen</button></div>
              <div class="gamelist" id="res">${results
                .map(
-                 (o, i) => `<div class="opitem"><button data-view="${i}"><b>${esc(o.name)}</b><span>${o.eco} · ${esc(o.san.slice(0, 8).join(' '))}${o.san.length > 8 ? '…' : ''}</span></button>
-               <button class="mini" data-w="${i}" title="Toevoegen aan repertoire als wit">+♔</button><button class="mini" data-b="${i}" title="Toevoegen aan repertoire als zwart">+♚</button></div>`,
+                 (o, i) => `<div class="opitem"><button data-view="${i}"><b>${esc(o.name)}</b><span>${o.eco}, ${esc(o.san.slice(0, 8).join(' '))}${o.san.length > 8 ? '...' : ''}</span></button>
+               <button class="mini-btn" data-w="${i}" title="Voeg toe aan repertoire als wit">+ Wit</button><button class="mini-btn" data-b="${i}" title="Voeg toe aan repertoire als zwart">+ Zwart</button></div>`,
                )
                .join('')}</div>`
           : ''
@@ -227,11 +809,11 @@ export function mount(root: HTMLElement): () => void {
           ? `<div class="chips">${moves.map((m) => `<button class="chip" data-uci="${m.uci}"><b>${esc(m.san)}</b><span>${esc(m.sample.name)}</span></button>`).join('')}</div>`
           : '<p class="muted">Geen theoriezetten meer in het boek.</p>'
       }
-      <div class="row">
-        <button id="addW" ${hist.length ? '' : 'disabled'}>Deze lijn → repertoire (wit)</button>
-        <button id="addB" ${hist.length ? '' : 'disabled'}>Deze lijn → repertoire (zwart)</button>
+      <div class="actions">
+        <button id="addW" ${hist.length ? '' : 'disabled'}>Deze lijn aan wit toevoegen</button>
+        <button id="addB" ${hist.length ? '' : 'disabled'}>Deze lijn aan zwart toevoegen</button>
       </div>
-      <p class="muted">${esc(repMsg)}</p>`;
+      <p class="muted small">${esc(repMsg)}</p>`;
     $(panel, '#q').oninput = (e) => {
       query = (e.target as HTMLInputElement).value;
       const pos = (e.target as HTMLInputElement).selectionStart;
@@ -276,167 +858,66 @@ export function mount(root: HTMLElement): () => void {
     }
     const cur = (s: 'white' | 'black') => () => {
       const op = openingName();
-      addLines([{ eco: op?.eco ?? '—', name: op ? `${op.name} (+${hist.length - op.san.length})`.replace(' (+0)', '') : 'Eigen lijn', san: hist }], s);
+      addLines([{ eco: op?.eco ?? '', name: op ? `${op.name} (+${hist.length - op.san.length})`.replace(' (+0)', '') : 'Eigen lijn', san: hist }], s);
     };
     $(panel, '#addW').onclick = cur('white');
     $(panel, '#addB').onclick = cur('black');
   }
 
-  /* ---------- oefenen ---------- */
-  const stats = () => load<{ runs: number; clean: number }>('openstats', { runs: 0, clean: 0 });
-
+  /* =====================================================
+     REPERTOIRE (eigen lijnen) + oefenen
+     ===================================================== */
   function sourceLines(): { san: string[]; side: 'white' | 'black'; name: string }[] {
     const rep = repertoire();
-    if (source === 'all-white') return rep.filter((l) => l.side === 'white');
-    if (source === 'all-black') return rep.filter((l) => l.side === 'black');
-    const l = rep.find((x) => x.id === source);
+    if (rSource === 'all-white') return rep.filter((l) => l.side === 'white');
+    if (rSource === 'all-black') return rep.filter((l) => l.side === 'black');
+    const l = rep.find((x) => x.id === rSource);
     return l ? [l] : [];
   }
 
-  function renderPractice() {
-    const rep = repertoire();
-    const st = stats();
-    panel.innerHTML = rep.length
-      ? `<p>Kies wat je wilt oefenen. Je speelt jouw zetten uit het repertoire; de tegenstander kiest willekeurig uit jouw lijnen.</p>
-         <div class="row"><select id="src">
-           <option value="all-white" ${source === 'all-white' ? 'selected' : ''}>Hele repertoire als wit (${rep.filter((l) => l.side === 'white').length})</option>
-           <option value="all-black" ${source === 'all-black' ? 'selected' : ''}>Hele repertoire als zwart (${rep.filter((l) => l.side === 'black').length})</option>
-           ${rep.map((l) => `<option value="${esc(l.id)}" ${source === l.id ? 'selected' : ''}>${l.side === 'white' ? '♔' : '♚'} ${esc(l.name)}</option>`).join('')}
-         </select><button class="primary" id="start">Start</button></div>
-         <div id="pstat" class="feedback">${msg}</div>
-         <div class="row"><button id="hint" ${practiceActive ? '' : 'disabled'}>💡 Hint</button><button id="skip" ${practiceActive ? '' : 'disabled'}>Opgeven (toon zet)</button></div>
-         <p class="muted">Totaal: ${st.runs} oefenrondes, ${st.clean} foutloos.</p>`
-      : '<p>Je repertoire is nog leeg. Ga naar <b>Verkennen</b>, zoek een opening en voeg die toe met +♔ of +♚.</p>';
-    if (!rep.length) return;
-    $(panel, '#src').onchange = (e) => (source = (e.target as HTMLSelectElement).value);
-    $(panel, '#start').onclick = () => {
-      source = ($(panel, '#src') as HTMLSelectElement).value;
-      startPractice();
-    };
-    $(panel, '#hint').onclick = showHint;
-    $(panel, '#skip').onclick = () => {
-      showHint();
-      totalMistakes++;
-    };
-  }
-
-  function startPractice() {
-    window.clearTimeout(timer);
-    const lines = sourceLines();
-    if (!lines.length) {
-      msg = '<span class="err">Geen lijnen voor deze keuze.</span>';
-      renderPractice();
-      return;
-    }
-    side = source === 'all-black' ? 'black' : source === 'all-white' ? 'white' : (lines[0].side);
-    tree = buildTree(lines);
-    orient = side;
-    practiceActive = true;
-    mistakes = 0;
-    totalMistakes = 0;
-    hintArrow = null;
-    msg = `Jij speelt ${side === 'white' ? 'wit' : 'zwart'}. Speel de juiste theoriezet!`;
-    replay([]);
-    renderPractice();
-    refresh();
-    step();
-  }
-
-  function expected(): Map<string, TreeMove> | undefined {
-    return tree.get(fenKey(chess.fen()));
-  }
-
-  function step() {
-    if (!practiceActive) return;
-    const exp = expected();
-    if (!exp || !exp.size) return finishPractice();
-    if (chess.turn() === side[0]) {
-      refresh();
-      return;
-    }
-    // tegenstander: gewogen willekeurig
-    const items = [...exp.entries()];
-    let r = Math.random() * items.reduce((s, [, v]) => s + v.weight, 0);
-    let pick = items[0];
-    for (const it of items) {
-      r -= it[1].weight;
-      if (r <= 0) {
-        pick = it;
-        break;
-      }
-    }
-    timer = window.setTimeout(() => {
-      if (disposed || !practiceActive) return;
-      const [uci] = pick;
-      chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
-      hist = chess.history();
-      hintArrow = null;
-      refresh();
-      step();
-    }, 450);
-  }
-
-  function practiceMove(m: UserMove) {
-    if (!practiceActive || chess.turn() !== side[0]) return;
-    const exp = expected();
-    const uci = m.from + m.to + (m.promotion ?? '');
-    if (exp?.has(uci)) {
-      chess.move(m);
-      hist = chess.history();
-      hintArrow = null;
-      mistakes = 0;
-      refresh();
-      step();
-      return;
-    }
-    // fout
-    totalMistakes++;
-    mistakes++;
-    board.shake();
-    const bm = book && bookMoves(book, chess.fen()).find((b) => b.uci === uci);
-    const extra = bm ? ` (wel theorie: <i>${esc(bm.sample.name)}</i>, maar niet in jouw repertoire)` : '';
-    msg = `<span class="err">✗ Niet de repertoirezet${extra}. Probeer opnieuw.</span>`;
-    if (mistakes >= 2) showHint();
-    renderPractice();
-    refresh();
-  }
-
-  function showHint() {
-    const exp = expected();
-    if (!exp) return;
-    const [uci] = [...exp.entries()].sort((a, b) => b[1].weight - a[1].weight)[0];
-    hintArrow = { from: uci.slice(0, 2), to: uci.slice(2, 4) };
-    refresh();
-  }
-
-  function finishPractice() {
-    practiceActive = false;
-    hintArrow = null;
-    const st = stats();
-    st.runs++;
-    if (totalMistakes === 0) st.clean++;
-    save('openstats', st);
-    const op = openingName();
-    msg = `<span class="ok">✓ Lijn afgerond${op ? `: <b>${esc(op.name)}</b>` : ''} — ${totalMistakes === 0 ? 'foutloos! 🎉' : `${totalMistakes} fout(en)`}.</span> Druk op Start voor een volgende lijn.`;
-    renderPractice();
-    refresh();
-  }
-
-  /* ---------- repertoire ---------- */
   function renderRep() {
     const rep = repertoire();
     const group = (s: 'white' | 'black') => {
       const ls = rep.filter((l) => l.side === s);
-      return `<h4>${s === 'white' ? '♔ Met wit' : '♚ Met zwart'} (${ls.length})</h4>${
+      return `<h4>${s === 'white' ? 'Met wit' : 'Met zwart'} (${ls.length})</h4>${
         ls.length
-          ? ls.map((l) => `<div class="opitem"><button data-show="${esc(l.id)}"><b>${esc(l.name)}</b><span>${l.eco} · ${esc(l.san.join(' '))}</span></button><button class="mini" data-del="${esc(l.id)}" title="Verwijderen">✕</button></div>`).join('')
-          : '<p class="muted">Leeg.</p>'
+          ? ls.map((l) => `<div class="opitem"><button data-show="${esc(l.id)}"><b>${esc(l.name)}</b><span>${esc(l.eco)} ${esc(l.san.join(' '))}</span></button><button class="mini-btn" data-del="${esc(l.id)}" title="Verwijderen">${icon('x-circle')}</button></div>`).join('')
+          : '<p class="muted small">Nog leeg.</p>'
       }`;
     };
-    panel.innerHTML = group('white') + group('black');
+    const st = load<{ runs: number; clean: number }>('openstats', { runs: 0, clean: 0 });
+    panel.innerHTML = `
+      <h2 class="ctitle">Mijn repertoire</h2>
+      <p class="muted">Eigen lijnen uit Verkennen en je Dagtraining. Oefen ze met een willekeurige tegenstander.</p>
+      ${
+        rep.length
+          ? `<div class="row"><select id="src">
+              <option value="all-white" ${rSource === 'all-white' ? 'selected' : ''}>Alles als wit (${rep.filter((l) => l.side === 'white').length})</option>
+              <option value="all-black" ${rSource === 'all-black' ? 'selected' : ''}>Alles als zwart (${rep.filter((l) => l.side === 'black').length})</option>
+              ${rep.map((l) => `<option value="${esc(l.id)}" ${rSource === l.id ? 'selected' : ''}>${l.side === 'white' ? 'Wit' : 'Zwart'}: ${esc(l.name)}</option>`).join('')}
+            </select><button class="primary" id="start">${icon('play')} Start</button></div>
+            <div class="feedback" id="pstat">${rMsg}</div>
+            <div class="actions"><button id="hint" ${rActive ? '' : 'disabled'}>${icon('lightbulb')} Hint</button><button id="skip" ${rActive ? '' : 'disabled'}>Toon de zet</button></div>
+            <p class="muted small">Totaal: ${st.runs} rondes, ${st.clean} foutloos.</p>`
+          : '<p>Je repertoire is nog leeg. Zoek bij Verkennen een opening en voeg die toe.</p>'
+      }
+      ${group('white')}${group('black')}`;
+    if (rep.length) {
+      $(panel, '#src').onchange = (e) => (rSource = (e.target as HTMLSelectElement).value);
+      $(panel, '#start').onclick = () => {
+        rSource = ($(panel, '#src') as HTMLSelectElement).value;
+        startRepPractice();
+      };
+      $(panel, '#hint').onclick = showRepHint;
+      $(panel, '#skip').onclick = () => {
+        rTotal++;
+        showRepHint();
+      };
+    }
     panel.querySelectorAll<HTMLElement>('[data-show]').forEach((b) => {
       b.onclick = () => {
         const l = rep.find((x) => x.id === b.dataset.show) as RepLine;
+        rActive = false;
         replay(l.san);
         orient = l.side;
         refresh();
@@ -450,12 +931,111 @@ export function mount(root: HTMLElement): () => void {
     });
   }
 
-  replay([]);
-  board.show(START_FEN, { movable: 'both' });
+  function startRepPractice() {
+    window.clearTimeout(timer);
+    const lines = sourceLines();
+    if (!lines.length) {
+      rMsg = '<span class="err">Geen lijnen voor deze keuze.</span>';
+      renderRep();
+      return;
+    }
+    rside = rSource === 'all-black' ? 'black' : rSource === 'all-white' ? 'white' : lines[0].side;
+    rtree = buildRepTree(lines);
+    orient = rside;
+    rActive = true;
+    rMistakes = 0;
+    rTotal = 0;
+    rHint = null;
+    rMsg = `Jij speelt ${rside === 'white' ? 'wit' : 'zwart'}. Speel de juiste theoriezet.`;
+    replay([]);
+    refresh();
+    renderRep();
+    stepRep();
+  }
+
+  const rExpected = () => rtree.get(fenKey(chess.fen()));
+
+  function stepRep() {
+    if (!rActive) return;
+    const exp = rExpected();
+    if (!exp || !exp.size) return finishRep();
+    if (chess.turn() === rside[0]) {
+      refresh();
+      return;
+    }
+    const items = [...exp.entries()];
+    let r = Math.random() * items.reduce((s, [, v]) => s + v.weight, 0);
+    let pick = items[0];
+    for (const it of items) {
+      r -= it[1].weight;
+      if (r <= 0) {
+        pick = it;
+        break;
+      }
+    }
+    timer = window.setTimeout(() => {
+      if (disposed || !rActive) return;
+      const [uci] = pick;
+      chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+      hist = chess.history();
+      rHint = null;
+      refresh();
+      stepRep();
+    }, 450);
+  }
+
+  function repMove(m: UserMove) {
+    if (!rActive || chess.turn() !== rside[0]) return;
+    const exp = rExpected();
+    const uci = m.from + m.to + (m.promotion ?? '');
+    if (exp?.has(uci)) {
+      chess.move(m);
+      hist = chess.history();
+      rHint = null;
+      rMistakes = 0;
+      refresh();
+      stepRep();
+      return;
+    }
+    rTotal++;
+    rMistakes++;
+    board?.shake();
+    const bm = book && bookMoves(book, chess.fen()).find((b) => b.uci === uci);
+    const extra = bm ? ` (wel theorie: <i>${esc(bm.sample.name)}</i>, maar niet in jouw repertoire)` : '';
+    rMsg = `<span class="err">Niet de repertoirezet${extra}. Probeer opnieuw.</span>`;
+    if (rMistakes >= 2) showRepHint();
+    renderRep();
+    refresh();
+  }
+
+  function showRepHint() {
+    const exp = rExpected();
+    if (!exp) return;
+    const [uci] = [...exp.entries()].sort((a, b) => b[1].weight - a[1].weight)[0];
+    rHint = { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+    refresh();
+  }
+
+  function finishRep() {
+    rActive = false;
+    rHint = null;
+    const st = load<{ runs: number; clean: number }>('openstats', { runs: 0, clean: 0 });
+    st.runs++;
+    if (rTotal === 0) st.clean++;
+    save('openstats', st);
+    const op = openingName();
+    rMsg = `<span class="ok">Lijn afgerond${op ? `: <b>${esc(op.name)}</b>` : ''}. ${rTotal === 0 ? 'Foutloos.' : `${rTotal} fout(en).`}</span> Druk op Start voor een volgende lijn.`;
+    renderRep();
+    refresh();
+  }
+
+  /* ---------- start ---------- */
+  syncTabs();
+  if (mode === 'learn') renderCatalog();
 
   return () => {
     disposed = true;
     window.clearTimeout(timer);
-    board.destroy();
+    board?.destroy();
   };
 }

@@ -9,7 +9,7 @@ npm run build    # statische site in dist/ (werkt vanaf elke host)
 ```
 
 - **Analyse**: PGN plakken of partijen ophalen van je Chess.com/Lichess-account (met filters en winst/verlies-kleuren). Game review met coach: briljante/geweldige zetten, gemiste kansen, uitleg per zet, "Probeer opnieuw" en sprongen tussen sleutelmomenten. Plus evaluatiegrafiek, live engine-lijnen en proefmodus.
-- **Openingen**: ~3.900 ECO-openingen (Lichess-data). Verkennen met boekzetten, repertoire samenstellen (wit/zwart) en oefenen met willekeurige tegenstander-zetten en hints.
+- **Openingen**: 13 geleide cursussen (Franse, Caro-Kann, Najdorf, Scandinavisch, QGD, Slavisch, Koningsindiaas, Engels, Reti en met wit Italiaans, Spaans, London, Damegambiet). Kies of je wit of zwart speelt en waartegen, leer de opening met uitleg per zet en varianten ("als je tegenstander dit speelt, doe dan dat"), en oefen daarna tegen een willekeurige tegenstander. Daarnaast verkennen met ~3.900 ECO-openingen en een eigen repertoire. Cursusdata: `src/courses.ts` (controle: `node --experimental-strip-types scripts/check-courses.mjs`).
 - **Theorie & puzzels**: eindspelen spelen tegen Stockfish (Lucena, Philidor, matpatronen…), eigen fouten met spaced repetition, Lichess-puzzels importeren.
 
 Openingsdata verversen: `node scripts/build-openings.mjs`.

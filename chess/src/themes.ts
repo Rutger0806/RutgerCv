@@ -9,42 +9,42 @@ export type Phase = 'opening' | 'middle' | 'end';
 export const THEMES: Record<Theme, { name: string; icon: string; advice: string }> = {
   allowmate: {
     name: 'Mat toegestaan',
-    icon: '☠️',
-    advice: 'Vóór elke zet: welke schaakjes kan mijn tegenstander geven na mijn zet? Check altijd: schaken, slaan, dreigen — ook voor je tegenstander.',
+    icon: 'skull',
+    advice: 'Vóór elke zet: welke schaakjes kan mijn tegenstander geven na mijn zet? Check altijd: schaken, slaan, dreigen, ook voor je tegenstander.',
   },
   hang: {
     name: 'Stukken weggegeven',
-    icon: '🎁',
+    icon: 'gift',
     advice: 'Na je gekozen zet, vraag: wordt iets van mij aangevallen en niet (genoeg) beschermd? Tel aanvallers en verdedigers voordat je loslaat.',
   },
   missedmate: {
     name: 'Mat gemist',
-    icon: '🎯',
+    icon: 'target',
     advice: 'Als de tegenstander zwak staat: zoek eerst alle schaakjes. Veel matcombinaties beginnen met een schaak of een offer.',
   },
   missedtactic: {
     name: 'Gemiste tactiek',
-    icon: '🔍',
-    advice: 'Gebruik de routine CCT: Checks, Captures, Threats — voor beide kanten — voordat je een rustige zet kiest.',
+    icon: 'magnifying-glass',
+    advice: 'Gebruik de routine CCT: Checks, Captures, Threats, voor beide kanten, voordat je een rustige zet kiest.',
   },
   threw: {
     name: 'Winst weggegeven',
-    icon: '📉',
+    icon: 'trend-down',
     advice: 'Sta je beter? Vereenvoudig: ruil stukken, neem geen risico, en vraag bij elke zet wat de tegenstander nog kan.',
   },
   opening: {
     name: 'Fouten in de opening',
-    icon: '📖',
+    icon: 'book-open',
     advice: 'Leer de belangrijkste lijnen van je repertoire beter en let op de eerste afwijkingen van je tegenstander.',
   },
   endgame: {
     name: 'Fouten in het eindspel',
-    icon: '♟️',
-    advice: 'Oefen basis-eindspelen (opposities, Lucena, Philidor) — daar win of verlies je halve punten.',
+    icon: 'flag-checkered',
+    advice: 'Oefen basis-eindspelen (opposities, Lucena, Philidor): daar win of verlies je halve punten.',
   },
   positional: {
     name: 'Positionele onnauwkeurigheden',
-    icon: '🧭',
+    icon: 'compass',
     advice: 'Denk aan plan en activiteit: breng stukken naar actieve velden, vermijd onnodige pionzetten en houd je koning veilig.',
   },
 };

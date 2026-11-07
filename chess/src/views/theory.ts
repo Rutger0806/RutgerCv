@@ -36,6 +36,7 @@ const LESSONS: Lesson[] = [
 
 export function mount(root: HTMLElement): () => void {
   root.innerHTML = `
+  <div class="page-head compact"><h1>Puzzels en eindspelen</h1></div>
   <div class="layout">
     <div class="left">
       <div class="boardrow"><div class="board"></div></div>
@@ -89,8 +90,8 @@ export function mount(root: HTMLElement): () => void {
 
   function renderEnd() {
     panel.innerHTML = `<p class="muted">Speel de stelling uit tegen Stockfish. Je krijgt een waarschuwing zodra je de winst of remise weggeeft.</p>
-      <div class="gamelist">${LESSONS.map(
-        (l) => `<button data-l="${l.id}"><b>${esc(l.title)}</b><span>${l.goal === 'win' ? 'Doel: winnen' : 'Doel: remise houden'} · jij speelt ${l.user === 'white' ? 'wit' : 'zwart'}</span></button>`,
+      <div class="gamelist all">${LESSONS.map(
+        (l) => `<button data-l="${l.id}"><b>${esc(l.title)}</b><span>${l.goal === 'win' ? 'Doel: winnen' : 'Doel: remise houden'}, jij speelt ${l.user === 'white' ? 'wit' : 'zwart'}</span></button>`,
       ).join('')}</div>
       ${lesson ? `<div class="tip"><b>Tip:</b> ${esc(lesson.tip)}</div>` : ''}`;
     panel.querySelectorAll<HTMLElement>('[data-l]').forEach((b) => (b.onclick = () => startLesson(LESSONS.find((l) => l.id === b.dataset.l)!)));
@@ -104,12 +105,12 @@ export function mount(root: HTMLElement): () => void {
     warned = false;
     busy = false;
     handler = lessonMove;
-    ctl.innerHTML = `<button id="hint">💡 Hint</button><button id="take">↶ Zet terug</button><button id="restart">⟲ Opnieuw</button>`;
+    ctl.innerHTML = `<button id="hint"><i class="ph ph-lightbulb"></i> Hint</button><button id="take"><i class="ph ph-arrow-u-up-left"></i> Zet terug</button><button id="restart"><i class="ph ph-arrow-counter-clockwise"></i> Opnieuw</button>`;
     $(ctl, '#hint').onclick = lessonHint;
     $(ctl, '#take').onclick = takeBack;
     $(ctl, '#restart').onclick = () => startLesson(l);
     renderEnd();
-    status.textContent = `${l.title} — ${l.goal === 'win' ? 'win de stelling' : 'houd remise'}.`;
+    status.textContent = `${l.title}: ${l.goal === 'win' ? 'win de stelling' : 'houd remise'}.`;
     showLesson();
     if (chess.turn() !== l.user[0]) void engineReply();
   }
@@ -133,15 +134,15 @@ export function mount(root: HTMLElement): () => void {
     const l = lesson!;
     if (chess.isCheckmate()) {
       const userMated = chess.turn() === l.user[0];
-      finish(!userMated && l.goal === 'win' ? true : userMated ? false : false, userMated ? 'Je bent mat gezet.' : 'Schaakmat! 🎉');
+      finish(!userMated && l.goal === 'win' ? true : userMated ? false : false, userMated ? 'Je bent mat gezet.' : 'Schaakmat!');
       return true;
     }
     if (chess.isDraw()) {
-      finish(l.goal === 'draw', l.goal === 'draw' ? 'Remise bereikt — gelukt! 🎉' : 'Remise: de winst is verspeeld.');
+      finish(l.goal === 'draw', l.goal === 'draw' ? 'Remise bereikt, gelukt!' : 'Remise: de winst is verspeeld.');
       return true;
     }
     if (l.goal === 'draw' && chess.history().length >= 60) {
-      finish(true, '30 zetten volgehouden zonder de remise te verspelen — gelukt! 🎉');
+      finish(true, '30 zetten volgehouden zonder de remise te verspelen — gelukt!');
       return true;
     }
     return false;
@@ -149,7 +150,7 @@ export function mount(root: HTMLElement): () => void {
 
   function finish(ok: boolean, text: string) {
     over = true;
-    status.innerHTML = `<span class="${ok ? 'ok' : 'err'}">${ok ? '✓' : '✗'} ${esc(text)}</span>`;
+    status.innerHTML = `<span class="${ok ? 'ok' : 'err'}"><i class="ph ph-${ok ? 'check-circle' : 'x-circle'}"></i> ${esc(text)}</span>`;
     showLesson();
   }
 
@@ -184,8 +185,8 @@ export function mount(root: HTMLElement): () => void {
     const l2 = lesson;
     let warn = '';
     if (stack.length && !warned) {
-      if (l2.goal === 'win' && uw < 70) warn = `⚠ Je laat de winst lopen (${fmtEval(l.cp, l.mate)} voor wit). Gebruik "Zet terug".`;
-      if (l2.goal === 'draw' && uw < 30) warn = `⚠ Je staat nu verloren (${fmtEval(l.cp, l.mate)} voor wit). Gebruik "Zet terug".`;
+      if (l2.goal === 'win' && uw < 70) warn = `Je laat de winst lopen (${fmtEval(l.cp, l.mate)} voor wit). Gebruik "Zet terug".`;
+      if (l2.goal === 'draw' && uw < 30) warn = `Je staat nu verloren (${fmtEval(l.cp, l.mate)} voor wit). Gebruik "Zet terug".`;
       if (warn) warned = true;
     }
     await sleep(350);
@@ -193,7 +194,7 @@ export function mount(root: HTMLElement): () => void {
     chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
     busy = false;
     if (checkEnd()) return;
-    status.innerHTML = warn ? `<span class="err">${esc(warn)}</span>` : 'Jouw zet.';
+    status.innerHTML = warn ? `<span class="err"><i class="ph ph-warning"></i> ${esc(warn)}</span>` : 'Jouw zet.';
     showLesson();
   }
 
@@ -232,7 +233,7 @@ export function mount(root: HTMLElement): () => void {
     const tags = [...new Set(all.flatMap((p) => p.tags ?? []))].sort().reverse();
     const tagOpts = tags.map((t) => `<option value="tag:${esc(t)}" ${t === pFilter ? 'selected' : ''}>${esc(t)}</option>`).join('');
     panel.innerHTML = `
-      <p><b>${all.length}</b> puzzels · <b>${due.length}</b> om te herhalen · ${all.filter((p) => p.source === 'mistake').length} eigen fouten</p>
+      <p><b>${all.length}</b> puzzels, <b>${due.length}</b> om te herhalen, ${all.filter((p) => p.source === 'mistake').length} eigen fouten</p>
       <div class="row"><button class="primary" id="next" ${all.length ? '' : 'disabled'}>${due.length ? 'Volgende puzzel' : 'Oefen toch'}</button>
         <select id="filter"><option value="all">Alles</option><option value="mistake">Alleen eigen fouten</option><option value="import">Alleen geïmporteerd</option>${tagOpts}</select></div>
       <details ${all.length ? '' : 'open'}><summary>Puzzels importeren (Lichess)</summary>
@@ -245,7 +246,7 @@ export function mount(root: HTMLElement): () => void {
       </details>
       ${all.length ? '<button id="clearImp" class="link">Geïmporteerde puzzels wissen</button>' : ''}
       <h4>Eigen fouten uit je partijen</h4>
-      <p class="muted">Analyseer een partij en klik op "Bewaar fouten als puzzels" — ze komen hier terug met spaced repetition.</p>`;
+      <p class="muted">Analyseer een partij en klik op "Bewaar fouten als puzzels", ze komen hier terug met spaced repetition.</p>`;
     $(panel, '#next').onclick = () => nextPuzzle(($(panel, '#filter') as HTMLSelectElement).value);
     if (pFilter) ($(panel, '#filter') as HTMLSelectElement).value = 'tag:' + pFilter;
     $(panel, '#imp').onclick = async () => {
@@ -293,11 +294,11 @@ export function mount(root: HTMLElement): () => void {
     failedOnce = false;
     solvedState = false;
     handler = puzzleMove;
-    ctl.innerHTML = `<button id="hint">💡 Hint</button><button id="show">Toon oplossing</button><button id="nx">Volgende ➜</button>`;
+    ctl.innerHTML = `<button id="hint"><i class="ph ph-lightbulb"></i> Hint</button><button id="show">Toon oplossing</button><button id="nx">Volgende <i class="ph ph-caret-right"></i></button>`;
     $(ctl, '#hint').onclick = () => hintPuzzle(false);
     $(ctl, '#show').onclick = () => hintPuzzle(true);
     $(ctl, '#nx').onclick = () => nextPuzzle(filter);
-    status.innerHTML = `<b>${esc(cur.title)}</b>${cur.rating ? ` · rating ${cur.rating}` : ''}`;
+    status.innerHTML = `<b>${esc(cur.title)}</b>${cur.rating ? `, rating ${cur.rating}` : ''}`;
     if (cur.setup) {
       showPuz(null, null);
       void sleep(600).then(() => {
@@ -360,7 +361,7 @@ export function mount(root: HTMLElement): () => void {
       failedOnce = true;
       board.shake();
       showPuz(null, null);
-      say('✗ Niet de beste zet — probeer opnieuw.', 'err');
+      say('<i class="ph ph-x-circle"></i> Niet de beste zet, probeer opnieuw.', 'err');
       return;
     }
     pz.move(m);
@@ -369,7 +370,7 @@ export function mount(root: HTMLElement): () => void {
       solvedState = true;
       if (!failedOnce) recordPuzzle(cur.id, true);
       showPuz(uci, null);
-      say(failedOnce ? '✓ Opgelost (met hulp/fout) — komt snel terug.' : '✓ Goed! Opgelost.', 'ok');
+      say(failedOnce ? '<i class="ph ph-check-circle"></i> Opgelost (met hulp of fout), komt snel terug.' : '<i class="ph ph-check-circle"></i> Goed! Opgelost.', 'ok');
       return;
     }
     // tegenzet automatisch
@@ -380,7 +381,7 @@ export function mount(root: HTMLElement): () => void {
     applyUci(reply);
     idx++;
     showPuz(reply, null);
-    say('✓ Goed. Wat nu?', 'ok');
+    say('<i class="ph ph-check-circle"></i> Goed. Wat nu?', 'ok');
   }
 
   render();
